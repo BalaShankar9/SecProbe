@@ -1,0 +1,435 @@
+# ─────────────────────────────────────────────────────────────────
+# SecProbe — Technology Fingerprint Database
+# Used by the tech scanner to detect servers, frameworks, CMS, etc.
+# ─────────────────────────────────────────────────────────────────
+
+web_servers:
+  - name: Apache
+    categories: [web-server]
+    headers:
+      Server: "Apache"
+    body_patterns: []
+    meta_patterns: []
+
+  - name: Nginx
+    categories: [web-server]
+    headers:
+      Server: "nginx"
+    body_patterns: []
+    meta_patterns: []
+
+  - name: IIS
+    categories: [web-server]
+    headers:
+      Server: "Microsoft-IIS"
+      X-Powered-By: "ASP.NET"
+    body_patterns: []
+    meta_patterns: []
+
+  - name: LiteSpeed
+    categories: [web-server]
+    headers:
+      Server: "LiteSpeed"
+    body_patterns: []
+    meta_patterns: []
+
+  - name: Caddy
+    categories: [web-server]
+    headers:
+      Server: "Caddy"
+    body_patterns: []
+    meta_patterns: []
+
+  - name: Cloudflare
+    categories: [cdn, waf]
+    headers:
+      Server: "cloudflare"
+      cf-ray: "."
+      cf-cache-status: "."
+    body_patterns: []
+    meta_patterns: []
+
+  - name: AWS CloudFront
+    categories: [cdn]
+    headers:
+      Via: "cloudfront"
+      X-Amz-Cf-Id: "."
+      X-Amz-Cf-Pop: "."
+    body_patterns: []
+    meta_patterns: []
+
+  - name: Fastly
+    categories: [cdn]
+    headers:
+      Via: "varnish"
+      X-Served-By: "cache-"
+      X-Fastly-Request-ID: "."
+    body_patterns: []
+    meta_patterns: []
+
+  - name: Akamai
+    categories: [cdn]
+    headers:
+      X-Akamai-Transformed: "."
+    body_patterns: []
+    meta_patterns: []
+
+  - name: Varnish
+    categories: [cache]
+    headers:
+      Via: "varnish"
+      X-Varnish: "."
+    body_patterns: []
+    meta_patterns: []
+
+frameworks:
+  - name: Express.js
+    categories: [framework, javascript]
+    headers:
+      X-Powered-By: "Express"
+    body_patterns: []
+    meta_patterns: []
+
+  - name: Django
+    categories: [framework, python]
+    headers:
+      X-Frame-Options: "DENY"
+    cookies: ["csrftoken", "sessionid"]
+    body_patterns:
+      - "csrfmiddlewaretoken"
+      - "__admin/login"
+    meta_patterns: []
+
+  - name: Flask
+    categories: [framework, python]
+    headers: {}
+    cookies: ["session"]
+    body_patterns: []
+    meta_patterns: []
+    url_patterns: []
+
+  - name: Ruby on Rails
+    categories: [framework, ruby]
+    headers:
+      X-Powered-By: "Phusion Passenger"
+      X-Runtime: "\\d+\\.\\d+"
+      X-Request-Id: "[a-f0-9-]{36}"
+    cookies: ["_session_id"]
+    body_patterns:
+      - "csrf-token"
+      - "authenticity_token"
+    meta_patterns:
+      - 'name="csrf-token"'
+
+  - name: Laravel
+    categories: [framework, php]
+    headers:
+      Set-Cookie: "laravel_session"
+    cookies: ["laravel_session", "XSRF-TOKEN"]
+    body_patterns:
+      - "_token"
+    meta_patterns: []
+
+  - name: Spring Boot
+    categories: [framework, java]
+    headers:
+      X-Application-Context: "."
+    body_patterns:
+      - "Whitelabel Error Page"
+      - "There was an unexpected error"
+    meta_patterns: []
+    url_patterns: ["/actuator"]
+
+  - name: ASP.NET
+    categories: [framework, dotnet]
+    headers:
+      X-Powered-By: "ASP.NET"
+      X-AspNet-Version: "."
+      X-AspNetMvc-Version: "."
+    cookies: ["ASP.NET_SessionId", ".AspNetCore.Session"]
+    body_patterns:
+      - "__VIEWSTATE"
+      - "__EVENTVALIDATION"
+      - "aspnetForm"
+    meta_patterns: []
+
+  - name: Next.js
+    categories: [framework, javascript]
+    headers:
+      X-Powered-By: "Next.js"
+    body_patterns:
+      - "__NEXT_DATA__"
+      - "/_next/static"
+    meta_patterns: []
+
+  - name: Nuxt.js
+    categories: [framework, javascript]
+    headers: {}
+    body_patterns:
+      - "__NUXT__"
+      - "/_nuxt/"
+    meta_patterns: []
+
+  - name: Vue.js
+    categories: [framework, javascript]
+    headers: {}
+    body_patterns:
+      - "vue.js"
+      - "vue.min.js"
+      - "vue@"
+      - "v-cloak"
+      - "data-v-"
+    meta_patterns: []
+
+  - name: React
+    categories: [framework, javascript]
+    headers: {}
+    body_patterns:
+      - "react.js"
+      - "react.min.js"
+      - "react-dom"
+      - "data-reactroot"
+      - "data-reactid"
+      - "_reactRootContainer"
+    meta_patterns: []
+
+  - name: Angular
+    categories: [framework, javascript]
+    headers: {}
+    body_patterns:
+      - "ng-version"
+      - "ng-app"
+      - "ng-controller"
+      - "angular.js"
+      - "angular.min.js"
+    meta_patterns: []
+
+  - name: jQuery
+    categories: [javascript-library]
+    headers: {}
+    body_patterns:
+      - "jquery"
+      - "jquery.min.js"
+      - "jquery-"
+    meta_patterns: []
+
+  - name: Bootstrap
+    categories: [css-framework]
+    headers: {}
+    body_patterns:
+      - "bootstrap.min.css"
+      - "bootstrap.min.js"
+      - "bootstrap.css"
+      - "bootstrap.js"
+      - "bootstrap@"
+    meta_patterns: []
+
+  - name: Tailwind CSS
+    categories: [css-framework]
+    headers: {}
+    body_patterns:
+      - "tailwindcss"
+      - "tailwind.min.css"
+    meta_patterns: []
+
+cms:
+  - name: WordPress
+    categories: [cms]
+    headers:
+      X-Pingback: "xmlrpc.php"
+      Link: "wp-json"
+    body_patterns:
+      - "wp-content"
+      - "wp-includes"
+      - "wp-json"
+      - "/wp-login.php"
+      - "wordpress"
+    meta_patterns:
+      - 'name="generator" content="WordPress'
+    url_patterns: ["/wp-admin", "/wp-login.php"]
+
+  - name: Joomla
+    categories: [cms]
+    headers: {}
+    body_patterns:
+      - "/media/jui/"
+      - "/media/system/"
+      - "Joomla!"
+      - "/administrator/"
+    meta_patterns:
+      - 'name="generator" content="Joomla'
+    url_patterns: ["/administrator"]
+
+  - name: Drupal
+    categories: [cms]
+    headers:
+      X-Drupal-Cache: "."
+      X-Drupal-Dynamic-Cache: "."
+      X-Generator: "Drupal"
+    body_patterns:
+      - "drupal.js"
+      - "Drupal.settings"
+      - "drupal.org"
+      - "/sites/default/files"
+      - "/misc/drupal.js"
+    meta_patterns:
+      - 'name="generator" content="Drupal'
+
+  - name: Shopify
+    categories: [cms, ecommerce]
+    headers:
+      X-ShopId: "."
+      X-Shopify-Stage: "."
+    body_patterns:
+      - "cdn.shopify.com"
+      - "Shopify.theme"
+      - "myshopify.com"
+    meta_patterns: []
+
+  - name: Magento
+    categories: [cms, ecommerce]
+    headers: {}
+    cookies: ["frontend", "adminhtml"]
+    body_patterns:
+      - "Mage.Cookies"
+      - "/skin/frontend/"
+      - "/js/mage/"
+      - "magentocommerce.com"
+    meta_patterns: []
+
+  - name: Ghost
+    categories: [cms]
+    headers:
+      X-Powered-By: "Ghost"
+    body_patterns:
+      - "ghost.org"
+      - "ghost-"
+    meta_patterns:
+      - 'name="generator" content="Ghost'
+
+  - name: Wix
+    categories: [cms]
+    headers:
+      X-Wix-Request-Id: "."
+    body_patterns:
+      - "static.wixstatic.com"
+      - "wix.com"
+    meta_patterns:
+      - 'name="generator" content="Wix'
+
+  - name: Squarespace
+    categories: [cms]
+    headers: {}
+    body_patterns:
+      - "squarespace.com"
+      - "static.squarespace.com"
+      - "sqsp"
+    meta_patterns:
+      - 'name="generator" content="Squarespace'
+
+analytics:
+  - name: Google Analytics
+    categories: [analytics]
+    body_patterns:
+      - "google-analytics.com/analytics.js"
+      - "googletagmanager.com"
+      - "gtag("
+      - "ga("
+      - "UA-"
+      - "G-"
+
+  - name: Google Tag Manager
+    categories: [analytics]
+    body_patterns:
+      - "googletagmanager.com/gtm.js"
+      - "GTM-"
+
+  - name: Facebook Pixel
+    categories: [analytics]
+    body_patterns:
+      - "connect.facebook.net"
+      - "fbevents.js"
+      - "fbq("
+
+  - name: Hotjar
+    categories: [analytics]
+    body_patterns:
+      - "hotjar.com"
+      - "static.hotjar.com"
+      - "hj("
+
+  - name: Mixpanel
+    categories: [analytics]
+    body_patterns:
+      - "mixpanel.com"
+      - "mixpanel.init"
+
+  - name: Segment
+    categories: [analytics]
+    body_patterns:
+      - "cdn.segment.com"
+      - "analytics.js"
+      - "analytics.identify"
+      - "analytics.track"
+
+security:
+  - name: reCAPTCHA
+    categories: [security]
+    body_patterns:
+      - "google.com/recaptcha"
+      - "grecaptcha"
+      - "g-recaptcha"
+
+  - name: hCaptcha
+    categories: [security]
+    body_patterns:
+      - "hcaptcha.com"
+      - "h-captcha"
+
+  - name: Cloudflare Turnstile
+    categories: [security]
+    body_patterns:
+      - "challenges.cloudflare.com/turnstile"
+      - "cf-turnstile"
+
+hosting:
+  - name: AWS
+    categories: [hosting, cloud]
+    headers:
+      Server: "AmazonS3"
+      X-Amz-Request-Id: "."
+    body_patterns: []
+
+  - name: Google Cloud
+    categories: [hosting, cloud]
+    headers:
+      Server: "Google Frontend"
+      Via: "google"
+    body_patterns: []
+
+  - name: Azure
+    categories: [hosting, cloud]
+    headers:
+      Server: "Microsoft-Azure"
+      X-Azure-Ref: "."
+    body_patterns: []
+
+  - name: Heroku
+    categories: [hosting, cloud]
+    headers:
+      Via: "vegur"
+    body_patterns: []
+
+  - name: Vercel
+    categories: [hosting, cloud]
+    headers:
+      Server: "Vercel"
+      X-Vercel-Id: "."
+    body_patterns: []
+
+  - name: Netlify
+    categories: [hosting, cloud]
+    headers:
+      Server: "Netlify"
+      X-NF-Request-ID: "."
+    body_patterns: []

@@ -1,0 +1,56 @@
+id: exposed-env-file
+info:
+  name: Exposed .env File
+  author: secprobe
+  severity: Critical
+  description: |
+    The .env file is publicly accessible. This file typically contains
+    sensitive configuration including database credentials, API keys,
+    secret keys, and other environment-specific secrets.
+  tags:
+    - exposure
+    - env
+    - credentials
+    - misconfig
+  reference:
+    - https://owasp.org/www-project-web-security-testing-guide/
+  cwe:
+    - CWE-538
+    - CWE-200
+  remediation: |
+    1. Immediately rotate all credentials found in the .env file
+    2. Block access to .env files in web server config
+    3. Move .env outside the web root
+
+requests:
+  - method: GET
+    path: /.env
+
+matchers-condition: and
+matchers:
+  - type: word
+    words:
+      - "DB_PASSWORD"
+      - "DB_HOST"
+      - "SECRET_KEY"
+      - "API_KEY"
+      - "DATABASE_URL"
+      - "AWS_SECRET"
+      - "MAIL_PASSWORD"
+      - "APP_KEY"
+    condition: or
+  - type: status
+    status:
+      - "200"
+  - type: word
+    words:
+      - "<html"
+      - "<HTML"
+    negative: true
+
+extractors:
+  - type: regex
+    name: credentials
+    regex:
+      - '(?:PASSWORD|SECRET|KEY|TOKEN)\s*=\s*(.+)'
+    group: 1

@@ -1,0 +1,48 @@
+id: exposed-git-config
+info:
+  name: Exposed .git/config
+  author: secprobe
+  severity: Critical
+  description: |
+    The .git/config file is publicly accessible, which may expose
+    repository details including remote URLs, branch information,
+    and potentially credentials for private repositories.
+  tags:
+    - exposure
+    - git
+    - misconfig
+  reference:
+    - https://owasp.org/www-project-web-security-testing-guide/
+  cwe:
+    - CWE-538
+  remediation: |
+    Block access to .git directory in your web server configuration.
+    For Nginx: location ~ /\.git { deny all; }
+    For Apache: RedirectMatch 404 /\.git
+
+requests:
+  - method: GET
+    path: /.git/config
+
+matchers-condition: and
+matchers:
+  - type: word
+    words:
+      - "[core]"
+      - "[remote"
+    condition: or
+  - type: status
+    status:
+      - "200"
+  - type: word
+    words:
+      - "<html"
+      - "<HTML"
+    negative: true
+
+extractors:
+  - type: regex
+    name: remote_url
+    regex:
+      - 'url\s*=\s*(.+)'
+    group: 1

@@ -1,0 +1,45 @@
+id: open-redirect-detection
+info:
+  name: Open Redirect Misconfiguration
+  author: secprobe
+  severity: Medium
+  description: |
+    Common redirect parameters are vulnerable to open redirect attacks.
+    An attacker can craft URLs that redirect users to malicious sites
+    while appearing to originate from the trusted domain.
+  tags:
+    - redirect
+    - misconfig
+  cwe:
+    - CWE-601
+  remediation: |
+    1. Validate redirect URLs against a whitelist of allowed domains
+    2. Use relative paths instead of absolute URLs for redirects
+    3. Display a warning page before redirecting to external sites
+
+requests:
+  - method: GET
+    path: /redirect?url=https://evil.com
+  - method: GET
+    path: /redirect?next=https://evil.com
+  - method: GET
+    path: /login?return=https://evil.com
+  - method: GET
+    path: /login?redirect_uri=https://evil.com
+  - method: GET
+    path: /out?url=https://evil.com
+    follow_redirects: false
+
+matchers-condition: or
+matchers:
+  - type: regex
+    part: header
+    regex:
+      - '(?i)location:\s*https?://evil\.com'
+  - type: status
+    status:
+      - "301"
+      - "302"
+      - "303"
+      - "307"
+      - "308"

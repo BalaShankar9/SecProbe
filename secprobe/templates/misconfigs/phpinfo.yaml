@@ -1,0 +1,47 @@
+id: phpinfo-exposed
+info:
+  name: phpinfo() Page Exposed
+  author: secprobe
+  severity: High
+  description: |
+    A phpinfo() page is publicly accessible, revealing detailed
+    server configuration including PHP version, loaded modules,
+    environment variables, and file paths.
+  tags:
+    - php
+    - exposure
+    - misconfig
+  cwe:
+    - CWE-200
+  remediation: |
+    Remove all phpinfo() files from production servers.
+    If needed for debugging, restrict access to internal IPs only.
+
+requests:
+  - method: GET
+    path: /phpinfo.php
+  - method: GET
+    path: /info.php
+  - method: GET
+    path: /php_info.php
+  - method: GET
+    path: /test.php
+
+matchers-condition: and
+matchers:
+  - type: word
+    words:
+      - "phpinfo()"
+      - "PHP Version"
+      - "PHP Credits"
+    condition: or
+  - type: status
+    status:
+      - "200"
+
+extractors:
+  - type: regex
+    name: php_version
+    regex:
+      - 'PHP Version\s*</td><td[^>]*>([^<]+)'
+    group: 1

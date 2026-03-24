@@ -1,0 +1,42 @@
+id: wordpress-debug-log
+info:
+  name: WordPress Debug Log Exposed
+  author: secprobe
+  severity: High
+  description: |
+    WordPress debug log is publicly accessible at /wp-content/debug.log.
+    This file may contain sensitive information including database queries,
+    file paths, PHP errors with stack traces, and user data.
+  tags:
+    - wordpress
+    - exposure
+    - logs
+  cwe:
+    - CWE-532
+  remediation: |
+    1. Disable WP_DEBUG_LOG in production
+    2. Block access to debug.log via .htaccess or web server config
+    3. Delete existing debug.log files
+
+requests:
+  - method: GET
+    path: /wp-content/debug.log
+
+matchers-condition: and
+matchers:
+  - type: word
+    words:
+      - "PHP"
+      - "WordPress"
+      - "Fatal error"
+      - "Notice:"
+      - "Warning:"
+      - "Stack trace"
+    condition: or
+  - type: status
+    status:
+      - "200"
+  - type: word
+    words:
+      - "<html"
+    negative: true
