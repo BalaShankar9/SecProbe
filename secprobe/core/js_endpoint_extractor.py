@@ -86,7 +86,11 @@ class JSEndpointExtractor:
             ),
             # String literals matching API patterns: /api/*, /rest/*, /graphql, /v1/*, /v2/*
             "api_strings": re.compile(
-                r"""["'](\/(?:api|rest|graphql|v[0-9]+)(?:\/[a-zA-Z0-9_\-\.]*)*)\/?["']""",
+                r"""["'`](\/(?:api|rest|graphql|v[0-9]+)(?:\/[a-zA-Z0-9_\-\.]*)*)\/?["'`]""",
+            ),
+            # Template literal paths with interpolation: `${host}/rest/products/search?q=${var}`
+            "template_paths": re.compile(
+                r"""(\/(?:api|rest|graphql|v[0-9]+)(?:\/[a-zA-Z0-9_\-\.]+)+)(?:\?[^`'"]*)?""",
             ),
             # Angular/React route definitions: {path: 'something', component: ...}
             "routes": re.compile(
@@ -172,6 +176,19 @@ class JSEndpointExtractor:
         for m in self._patterns["api_strings"].finditer(js_source):
             url = m.group(1)
             _add(url, "GET", source="string_literal", confidence=0.5)
+
+        # Template literal paths (e.g., `${host}/rest/products/search?q=${query}`)
+        for m in self._patterns["template_paths"].finditer(js_source):
+            url = m.group(1)
+            # Strip query params with template variables
+            clean_url = re.sub(r'\?.*$', '', url)
+            _add(clean_url, "GET", source="template_literal", confidence=0.6)
+            # Also add with query param placeholder if there was one
+            if '?' in url:
+                param_part = url.split('?', 1)[1]
+                param_name = re.sub(r'=\$\{[^}]+\}', '=test', param_part)
+                param_name = re.sub(r'=\$.*$', '=test', param_name)
+                _add(f"{clean_url}?{param_name}", "GET", source="template_literal", confidence=0.6)
 
         # Angular/React routes
         for m in self._patterns["routes"].finditer(js_source):
