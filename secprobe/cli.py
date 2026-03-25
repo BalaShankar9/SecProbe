@@ -249,6 +249,10 @@ EXAMPLES:
                        help="Min agents for finding confirmation (default: 3)")
     swarm.add_argument("--federated", action="store_true",
                        help="Enable federated learning (community intelligence)")
+    swarm.add_argument("--stealth-preset", default=None,
+                       choices=["ghost", "ninja", "shadow", "blitz", "normal"],
+                       help="Stealth preset: ghost (max stealth), ninja (balanced), "
+                            "shadow (low-and-slow), blitz (fast+evasion), normal (none)")
 
     output = parser.add_argument_group("Output")
     output.add_argument("-o", "--output", choices=["console", "json", "html", "sarif", "junit"],
