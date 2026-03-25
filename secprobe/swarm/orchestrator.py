@@ -36,7 +36,7 @@ from secprobe.swarm.consensus import ConsensusEngine
 from secprobe.swarm.comm.event_bus import EventBus
 from secprobe.swarm.comm.blackboard import Blackboard
 from secprobe.swarm.memory.working import WorkingMemory
-from secprobe.swarm.memory.episodic import EpisodicMemory, Episode
+from secprobe.swarm.memory.episodic import EpisodicMemory, ScanEpisode
 from secprobe.swarm.memory.semantic import SemanticMemory
 from secprobe.swarm.memory.procedural import ProceduralMemory
 from secprobe.swarm.memory.federated import FederatedMemory
@@ -275,13 +275,12 @@ class SwarmOrchestrator:
             tech_profile = tech
 
         # Record in episodic memory
-        self._episodic.record(self._scan_id, Episode(
-            agent_id="orchestrator",
-            event_type="phase_complete",
-            description="Reconnaissance complete",
-            data={"tech_profile": tech_profile, "agents_deployed": len(agents)},
-            outcome="success",
-        ))
+        await self._working_memory.store(
+            f"event:recon_complete:{self._scan_id}",
+            {"tech_profile": tech_profile, "agents_deployed": len(agents)},
+            source="orchestrator",
+            tags=("event", "phase_complete", "recon"),
+        )
 
         return tech_profile
 
@@ -350,24 +349,37 @@ class SwarmOrchestrator:
         if config.mode == OperationalMode.AUDIT:
             target_divisions.append(14)  # Exploit
 
-        # Check semantic memory for patterns
-        patterns = self._semantic.query(
-            conditions={"technologies": techs},
-            min_confidence=0.7,
-        )
-        for pattern in patterns:
-            predicted_divs = pattern.predictions.get("recommended_divisions", [])
-            target_divisions.extend(predicted_divs)
+        # Check semantic memory for tech-vuln correlations
+        correlations = self._semantic.get_likely_vulns(techs)
+        # Map high-confidence vulns to their relevant divisions
+        _vuln_div_map = {
+            "sqli": 2, "xss": 2, "ssti": 2, "cmdi": 2, "nosql": 2,
+            "auth": 3, "session": 3, "jwt": 3, "oauth": 3,
+            "idor": 4, "bola": 4, "privesc": 4,
+            "api": 5, "graphql": 5, "websocket": 5,
+            "domxss": 6, "prototype": 6,
+            "tls": 7, "crypto": 7,
+            "ssrf": 8, "smuggling": 8,
+            "cloud": 9, "s3": 9,
+            "cve": 10, "dependency": 10,
+            "race": 11, "bizlogic": 11,
+            "upload": 12, "xxe": 12, "lfi": 12,
+        }
+        for corr in correlations:
+            if corr.confidence >= 0.7:
+                div = _vuln_div_map.get(corr.vuln_type)
+                if div:
+                    target_divisions.append(div)
 
         # Deduplicate and sort
         target_divisions = sorted(set(target_divisions))
 
-        self._episodic.record(self._scan_id, Episode(
-            agent_id="orchestrator",
-            event_type="decision",
-            description=f"Selected divisions: {target_divisions}",
-            data={"divisions": target_divisions, "tech_profile": tech_profile},
-        ))
+        await self._working_memory.store(
+            f"event:divisions_selected:{self._scan_id}",
+            {"divisions": target_divisions, "tech_profile": tech_profile},
+            source="orchestrator",
+            tags=("event", "decision", "planning"),
+        )
 
         return target_divisions
 

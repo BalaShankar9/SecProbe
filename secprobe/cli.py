@@ -1,5 +1,5 @@
 """
-SecProbe v6.0 — CLI Entry Point
+SecProbe v8.0 — CLI Entry Point
 
 Enterprise security testing with advanced engines:
   - StealthClient: Browser-grade TLS impersonation (bypass Cloudflare/Akamai JA3)
@@ -14,9 +14,11 @@ Enterprise security testing with advanced engines:
   - Plugin architecture (scanner, reporter, transport, middleware)
   - API/GraphQL/WebSocket scanners
   - Full pipeline: Auth → WAF → Crawl → Scan → Report
+  - 600-Agent Autonomous Swarm Mode (recon/audit/redteam)
 """
 
 import argparse
+import asyncio
 import sys
 import warnings
 from datetime import datetime
@@ -38,7 +40,11 @@ from secprobe.utils import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="secprobe",
-        description="SecProbe — Enterprise Security Testing Toolkit v" + __version__,
+        description="SecProbe v8.0 — Enterprise Security Testing\n\n"
+                     "Modes:\n"
+                     "  Classic:  python -m secprobe target.com -s sqli xss\n"
+                     "  Swarm:    python -m secprobe target.com --swarm --mode audit\n"
+                     "  Redteam:  python -m secprobe target.com --swarm --mode redteam\n",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 SCAN TYPES:
@@ -223,6 +229,27 @@ EXAMPLES:
     v8.add_argument("--max-duration", type=float, default=0.0,
                     help="Maximum scan duration in seconds (0=unlimited)")
 
+    # ── v8.0 Swarm mode ─────────────────────────────────────────
+    swarm = parser.add_argument_group("Swarm mode (v8.0)")
+    swarm.add_argument("--swarm", action="store_true",
+                       help="Enable 600-agent swarm mode (default: classic scanner mode)")
+    swarm.add_argument("--mode", default="audit",
+                       choices=["recon", "audit", "redteam"],
+                       help="Operational mode for swarm (default: audit)")
+    swarm.add_argument("--divisions", nargs="+", type=int, default=None,
+                       metavar="N",
+                       help="Only deploy specific divisions (1-20)")
+    swarm.add_argument("--max-agents", type=int, default=20,
+                       help="Max concurrent agents (default: 20)")
+    swarm.add_argument("--max-swarm-requests", type=int, default=10000,
+                       help="Max total HTTP requests for swarm (default: 10000)")
+    swarm.add_argument("--swarm-rate-limit", type=int, default=20,
+                       help="Requests per second for swarm (default: 20)")
+    swarm.add_argument("--consensus", type=int, default=3,
+                       help="Min agents for finding confirmation (default: 3)")
+    swarm.add_argument("--federated", action="store_true",
+                       help="Enable federated learning (community intelligence)")
+
     output = parser.add_argument_group("Output")
     output.add_argument("-o", "--output", choices=["console", "json", "html", "sarif", "junit"],
                         default="console", help="Report format (default: console)")
@@ -406,6 +433,184 @@ def _run_scanners_sequential(scanner_classes, config, context):
     return results
 
 
+def _run_swarm(args):
+    """Execute 600-agent swarm mode."""
+    from secprobe.swarm.executor import SwarmExecutor, ExecutorConfig
+    from secprobe.swarm.registry import SwarmRegistry
+    from secprobe.swarm.safety.governor import SafetyGovernor, ScopeConfig, BudgetConfig
+    from secprobe.swarm.comm.event_bus import EventBus
+    from secprobe.swarm.memory.working import WorkingMemory
+
+    target = normalize_url(args.target)
+    mode = args.mode.upper()
+
+    # ── Mode-aware banner ────────────────────────────────────────
+    mode_colors = {
+        "RECON": Colors.CYAN,
+        "AUDIT": Colors.YELLOW,
+        "REDTEAM": Colors.RED,
+    }
+    mode_color = mode_colors.get(mode, Colors.RESET)
+    print(f"\n  {mode_color}{Colors.BOLD}[ SWARM MODE: {mode} ]{Colors.RESET}")
+    print(f"  {Colors.GRAY}Target:     {target}{Colors.RESET}")
+    print(f"  {Colors.GRAY}Max agents: {args.max_agents}{Colors.RESET}")
+    print(f"  {Colors.GRAY}Rate limit: {args.swarm_rate_limit} req/s{Colors.RESET}")
+    print(f"  {Colors.GRAY}Consensus:  {args.consensus} agents{Colors.RESET}")
+    if args.divisions:
+        print(f"  {Colors.GRAY}Divisions:  {args.divisions}{Colors.RESET}")
+    if args.federated:
+        print(f"  {Colors.GRAY}Federated:  enabled{Colors.RESET}")
+    print()
+
+    # ── Build components ─────────────────────────────────────────
+    executor_config = ExecutorConfig(
+        max_agents=args.max_agents,
+        max_requests=args.max_swarm_requests,
+        rate_limit=args.swarm_rate_limit,
+        consensus=args.consensus,
+        federated=args.federated,
+    )
+
+    scope_config = ScopeConfig(target_domain=args.target)
+    budget_config = BudgetConfig(
+        max_requests=args.max_swarm_requests,
+        rate_limit=args.swarm_rate_limit,
+    )
+    governor = SafetyGovernor(scope=scope_config, budget=budget_config)
+
+    event_bus = EventBus()
+    working_memory = WorkingMemory()
+
+    # ── Load agent registry ──────────────────────────────────────
+    print_section("Loading Swarm Registry")
+    registry = SwarmRegistry.load_all()
+    total_agents = registry.agent_count
+    division_count = registry.division_count
+    print_status(f"Registry loaded: {total_agents} agents across {division_count} divisions", "success")
+
+    if args.divisions:
+        print_status(f"Deploying divisions: {args.divisions}", "info")
+
+    # ── Wire progress events ─────────────────────────────────────
+    _scan_start = datetime.now()
+
+    def _on_agent_deployed(event):
+        print_status(
+            f"Agent deployed: {event.agent_id} (division {event.division})",
+            "progress",
+        )
+
+    def _on_finding(event):
+        sev = event.finding.severity if hasattr(event, 'finding') else "INFO"
+        color = {"CRITICAL": Colors.RED, "HIGH": Colors.RED,
+                 "MEDIUM": Colors.YELLOW, "LOW": Colors.GREEN}.get(sev, Colors.GRAY)
+        title = event.finding.title if hasattr(event, 'finding') else str(event)
+        print(f"    {color}[{sev}]{Colors.RESET} {title}")
+
+    def _on_progress(event):
+        print_status(
+            f"[{event.agents_deployed}/{total_agents}] "
+            f"Findings: {event.findings_count} | "
+            f"Requests: {event.requests_made}/{args.max_swarm_requests}",
+            "progress",
+        )
+
+    event_bus.on("agent_deployed", _on_agent_deployed)
+    event_bus.on("finding_discovered", _on_finding)
+    event_bus.on("progress", _on_progress)
+
+    # ── Create and run executor ──────────────────────────────────
+    print_section(f"Executing Swarm — {mode}")
+    executor = SwarmExecutor(
+        config=executor_config,
+        registry=registry,
+        governor=governor,
+        event_bus=event_bus,
+        working_memory=working_memory,
+    )
+
+    divisions = args.divisions
+    results = asyncio.run(executor.execute(target, args.mode, divisions))
+
+    # ── Results ──────────────────────────────────────────────────
+    _scan_duration = (datetime.now() - _scan_start).total_seconds()
+
+    print_section("Swarm Results")
+    all_findings = results.findings if hasattr(results, 'findings') else []
+
+    total = len(all_findings)
+    by_sev = {}
+    for f in all_findings:
+        sev = f.severity if hasattr(f, 'severity') else "INFO"
+        by_sev[sev] = by_sev.get(sev, 0) + 1
+
+    print_status(f"Total findings: {total}", "info")
+    for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
+        count = by_sev.get(sev, 0)
+        if count:
+            color = {"CRITICAL": Colors.RED, "HIGH": Colors.RED, "MEDIUM": Colors.YELLOW,
+                     "LOW": Colors.GREEN, "INFO": Colors.GRAY}.get(sev, Colors.RESET)
+            print(f"    {color}{sev}: {count}{Colors.RESET}")
+
+    print_status(f"Duration: {_scan_duration:.1f}s", "info")
+    print_status(f"Agents deployed: {results.agents_deployed if hasattr(results, 'agents_deployed') else 'N/A'}", "info")
+    print_status(f"Requests made: {results.requests_made if hasattr(results, 'requests_made') else 'N/A'}", "info")
+
+    # ── Generate report using existing infrastructure ────────────
+    if args.output != "console" or args.file:
+        try:
+            reporter = ReportGenerator(
+                results.scan_results if hasattr(results, 'scan_results') else [],
+                args.target,
+                scan_duration=_scan_duration,
+            )
+            output_file = args.file
+            if not output_file and args.output != "console":
+                ext_map = {"json": "json", "html": "html", "sarif": "sarif.json", "junit": "xml"}
+                ext = ext_map.get(args.output, "json")
+                output_file = f"reports/secprobe_swarm_{args.target.replace('/', '_')}_{datetime.now():%Y%m%d_%H%M%S}.{ext}"
+            reporter.generate(args.output, output_file)
+        except Exception as e:
+            print_status(f"Report generation error: {e}", "warning")
+
+    if args.sarif:
+        try:
+            reporter = ReportGenerator(
+                results.scan_results if hasattr(results, 'scan_results') else [],
+                args.target,
+                scan_duration=_scan_duration,
+            )
+            reporter.generate("sarif", args.sarif)
+        except Exception as e:
+            print_status(f"SARIF report error: {e}", "warning")
+
+    if args.junit:
+        try:
+            reporter = ReportGenerator(
+                results.scan_results if hasattr(results, 'scan_results') else [],
+                args.target,
+                scan_duration=_scan_duration,
+            )
+            reporter.generate("junit", args.junit)
+        except Exception as e:
+            print_status(f"JUnit report error: {e}", "warning")
+
+    print_status("Swarm scan complete.", "success")
+
+    # ── Exit code based on --fail-on threshold ───────────────────
+    if args.fail_on:
+        severity_order = ["critical", "high", "medium", "low"]
+        threshold_idx = severity_order.index(args.fail_on)
+        fail_severities = [s.upper() for s in severity_order[:threshold_idx + 1]]
+        has_failing = any(
+            (f.severity if hasattr(f, 'severity') else "") in fail_severities
+            for f in all_findings
+        )
+        if has_failing:
+            print_status(f"FAIL: Findings >= {args.fail_on.upper()} detected (exit 1)", "error")
+            sys.exit(1)
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
@@ -419,6 +624,11 @@ def main():
         print_status(f"Invalid target: {args.target}", "error")
         print_status("Provide a valid hostname, IP address, or URL.", "info")
         sys.exit(1)
+
+    # ── Swarm mode execution path ────────────────────────────────────
+    if args.swarm:
+        _run_swarm(args)
+        return
 
     config = ScanConfig(
         target=args.target,

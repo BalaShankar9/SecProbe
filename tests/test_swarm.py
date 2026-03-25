@@ -316,129 +316,125 @@ class TestWorkingMemory:
 
 class TestEpisodicMemory:
     def setup_method(self):
-        from secprobe.swarm.memory.episodic import EpisodicMemory, Episode
+        from secprobe.swarm.memory.episodic import EpisodicMemory
         self.tmpdir = tempfile.mkdtemp()
-        self.mem = EpisodicMemory(storage_dir=self.tmpdir)
+        self.mem = EpisodicMemory(storage_path=self.tmpdir)
 
-    def test_session_lifecycle(self):
-        from secprobe.swarm.memory.episodic import Episode
-        session = self.mem.create_session("scan-1", "example.com", "audit")
-        assert session.scan_id == "scan-1"
+    def teardown_method(self):
+        self.mem.close()
 
-        self.mem.record("scan-1", Episode(
-            agent_id="recon-dns-brute",
-            event_type="finding",
-            description="Found subdomain: api.example.com",
-        ))
+    def test_record_and_recall(self):
+        from secprobe.swarm.memory.episodic import ScanEpisode
+        ep = ScanEpisode(
+            scan_id="scan-1",
+            target="example.com",
+            mode="audit",
+            duration_seconds=12.5,
+            findings=[{"vuln": "sqli", "url": "/search"}],
+        )
+        self.mem.record_episode(ep)
+        results = self.mem.recall_by_target("example.com")
+        assert len(results) == 1
+        assert results[0].scan_id == "scan-1"
+        assert results[0].target == "example.com"
 
-        episodes = self.mem.get_episodes("scan-1", event_type="finding")
-        assert len(episodes) == 1
-
-    def test_persist_and_load(self):
-        from secprobe.swarm.memory.episodic import Episode
-        self.mem.create_session("scan-2", "test.com", "recon")
-        self.mem.record("scan-2", Episode(agent_id="test", event_type="action"))
-        self.mem.finalize("scan-2", total_requests=100)
-
-        path = self.mem.persist("scan-2")
-        assert os.path.exists(path)
-
-        loaded = self.mem.load("scan-2")
-        assert loaded is not None
-        assert loaded.target == "test.com"
-        assert len(loaded.episodes) == 1
+    def test_recall_recent(self):
+        from secprobe.swarm.memory.episodic import ScanEpisode
+        self.mem.record_episode(ScanEpisode(scan_id="s1", target="a.com"))
+        self.mem.record_episode(ScanEpisode(scan_id="s2", target="b.com"))
+        recent = self.mem.recall_recent(limit=10)
+        assert len(recent) == 2
 
 
 class TestSemanticMemory:
     def setup_method(self):
-        from secprobe.swarm.memory.semantic import SemanticMemory, SemanticPattern
+        from secprobe.swarm.memory.semantic import SemanticMemory
         self.tmpdir = tempfile.mkdtemp()
-        self.mem = SemanticMemory(storage_dir=self.tmpdir)
+        self.mem = SemanticMemory(storage_path=self.tmpdir)
 
-    def test_learn_and_query(self):
-        from secprobe.swarm.memory.semantic import SemanticPattern
-        self.mem.learn(SemanticPattern(
-            id="wp-sqli",
-            description="WordPress SQLi pattern",
-            category="tech_correlation",
-            conditions={"cms": "wordpress"},
-            predictions={"likely_vuln": "sqli"},
-            confidence=0.85,
-            evidence_count=10,
-        ))
-        results = self.mem.query(conditions={"cms": "wordpress"})
-        assert len(results) == 1
-        assert results[0].confidence == 0.85
+    def teardown_method(self):
+        self.mem.close()
 
-    def test_reinforce(self):
-        from secprobe.swarm.memory.semantic import SemanticPattern
-        self.mem.learn(SemanticPattern(
-            id="test", description="Test",
-            category="test", confidence=0.5, evidence_count=1,
-        ))
-        self.mem.reinforce("test", True)
-        p = self.mem.get("test")
-        assert p.evidence_count == 2
-        assert p.confidence > 0.5
+    def test_learn_correlation(self):
+        self.mem.learn_correlation("wordpress", "sqli", found=True)
+        self.mem.learn_correlation("wordpress", "sqli", found=True)
+        self.mem.learn_correlation("wordpress", "sqli", found=False)
+        results = self.mem.get_likely_vulns(["wordpress"])
+        assert len(results) >= 1
+        assert results[0].vuln_type == "sqli"
+        assert results[0].technology == "wordpress"
 
-    def test_persist_and_load(self):
-        from secprobe.swarm.memory.semantic import SemanticPattern
-        self.mem.learn(SemanticPattern(
-            id="p1", description="Pattern 1", category="test",
-            confidence=0.9, evidence_count=5,
-        ))
-        self.mem.persist()
+    def test_learn_payload(self):
+        self.mem.learn_payload("' OR 1=1--", "sqli", success=True, tech="mysql")
+        self.mem.learn_payload("' OR 1=1--", "sqli", success=True, tech="mysql")
+        self.mem.learn_payload("' OR 1=1--", "sqli", success=False, tech="mysql")
+        best = self.mem.get_best_payloads("sqli", tech="mysql")
+        assert len(best) >= 1
 
-        new_mem = type(self.mem)(storage_dir=self.tmpdir)
-        count = new_mem.load()
-        assert count == 1
+    def test_attack_priority(self):
+        self.mem.learn_correlation("wordpress", "sqli", found=True)
+        self.mem.learn_correlation("wordpress", "xss", found=True)
+        self.mem.learn_correlation("wordpress", "xss", found=True)
+        priorities = self.mem.get_attack_priority(["wordpress"])
+        assert len(priorities) >= 1
 
 
 class TestProceduralMemory:
     def setup_method(self):
-        from secprobe.swarm.memory.procedural import ProceduralMemory, Procedure
+        from secprobe.swarm.memory.procedural import ProceduralMemory
         self.tmpdir = tempfile.mkdtemp()
-        self.mem = ProceduralMemory(storage_dir=self.tmpdir)
+        self.mem = ProceduralMemory(storage_path=self.tmpdir)
+
+    def teardown_method(self):
+        self.mem.close()
 
     def test_record_and_find(self):
-        from secprobe.swarm.memory.procedural import Procedure
-        self.mem.record(Procedure(
-            id="wp-sqli-search",
-            name="WordPress SQLi",
-            description="SQLi via search",
-            category="sqli",
-            applicability={"cms": "wordpress"},
+        from secprobe.swarm.memory.procedural import AttackProcedure, AttackStep
+        proc = AttackProcedure(
+            procedure_id="wp-sqli-search",
+            vuln_type="sqli",
+            technology="wordpress",
+            name="WordPress SQLi via search",
+            steps=[
+                AttackStep(action="inject_payload", target_url="/search",
+                           parameter="q", payload="' OR 1=1--",
+                           response_indicator="SQL syntax error"),
+            ],
             success_count=5,
-            attempt_count=8,
-        ))
-        results = self.mem.find_applicable({"cms": "wordpress"})
-        assert len(results) == 1
-        assert results[0].success_rate == 5 / 8
+        )
+        self.mem.record_procedure(proc)
+        results = self.mem.find_procedure("sqli", tech="wordpress")
+        assert len(results) >= 1
+        assert results[0].vuln_type == "sqli"
 
 
 class TestFederatedMemory:
     def test_disabled_by_default(self):
         from secprobe.swarm.memory.federated import FederatedMemory
         mem = FederatedMemory(enabled=False)
-        results = mem.query(category="test")
+        # Disabled memory should not error on instantiation
+        assert mem.enabled is False
+
+    def test_disabled_query_returns_empty(self):
+        import asyncio
+        from secprobe.swarm.memory.federated import FederatedMemory
+        mem = FederatedMemory(enabled=False)
+        results = asyncio.run(mem.query_patterns("sqli"))
         assert results == []
 
-    def test_contribute_and_query(self):
-        from secprobe.swarm.memory.federated import FederatedMemory, LocalContribution
-        mem = FederatedMemory(enabled=True)
-        mem.contribute(LocalContribution(
+    def test_disabled_contribute_safe(self):
+        import asyncio
+        from secprobe.swarm.memory.federated import FederatedMemory, FederatedPattern
+        mem = FederatedMemory(enabled=False)
+        pattern = FederatedPattern(
+            pattern_id="test",
+            vuln_type="sqli",
             technology="wordpress",
-            vulnerability_type="sqli",
-            waf_detected="cloudflare",
-            success=True,
-            payload_hash=LocalContribution.hash_payload("test"),
-        ))
-        results = mem.query(
-            conditions={"technology": "wordpress"},
-            min_contributors=0,
-            min_confidence=0,
+            payload_hash="abc123",
+            effectiveness=0.9,
         )
-        assert len(results) >= 1
+        result = asyncio.run(mem.contribute_pattern(pattern))
+        assert result is False
 
 
 # ═══════════════════════════════════════════════════════════════════════

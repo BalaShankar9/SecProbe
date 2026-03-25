@@ -1,276 +1,398 @@
 """
-L5: Federated Memory — Community intelligence (opt-in, anonymized).
+L5: Federated Memory — Community intelligence (opt-in, anonymised).
 
-The most powerful memory tier. When enabled, SecProbe can learn from
+The most powerful memory tier.  When enabled, SecProbe can learn from
 the collective experience of all users:
+
     - "This payload bypassed Cloudflare for 47 users this week"
     - "WordPress 6.4 has a new SQLi pattern in REST API"
     - "AWS WAF v2 blocks X-Forwarded-For spoofing since March"
 
 Privacy model:
-    - ALL data is anonymized before sharing (no target URLs, IPs, or org info)
-    - Only patterns are shared: (technology, vulnerability_type, success_rate)
-    - Users opt-in explicitly with --federated flag
-    - Local-only mode is the default
+    - ALL data is anonymised before sharing — no target URLs, IPs,
+      credentials, or organisation info are ever transmitted.
+    - Only statistical patterns are shared: (technology, vuln_type,
+      payload_hash, effectiveness, waf_name).
+    - Users opt-in explicitly (``enabled=True``).
+    - Local-only mode is the default.
 
-This module defines the data structures and local aggregation logic.
-The actual network sync is a separate service (not included here).
+Network layer:
+    Uses ``httpx`` for async HTTP calls to a Supabase REST API backend.
+    Falls back gracefully when offline or misconfigured.
+
+Storage: The Supabase ``federated_patterns`` table (remote).  No local
+persistence beyond what the caller provides — this tier is intentionally
+stateless on the client side.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
-import os
+import logging
 import time
+import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Optional
 
+logger = logging.getLogger("secprobe.memory.federated")
+
+# ---------------------------------------------------------------------------
+# Lazy httpx import — only needed when federated mode is actually enabled.
+# This prevents an import-time dependency for users who never enable the
+# federated tier.
+# ---------------------------------------------------------------------------
+_httpx = None
+
+
+def _get_httpx():
+    global _httpx
+    if _httpx is None:
+        try:
+            import httpx
+            _httpx = httpx
+        except ImportError:
+            raise ImportError(
+                "httpx is required for Federated Memory. "
+                "Install it with: pip install httpx"
+            )
+    return _httpx
+
+
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
 
 @dataclass
-class FederatedInsight:
-    """An anonymized insight from the community."""
-    id: str
-    category: str                   # "waf_bypass", "tech_vuln", "payload_success", etc.
-    conditions: dict[str, Any] = field(default_factory=dict)
-    insight: str = ""               # What was learned
-    confidence: float = 0.0         # Community confidence (0.0-1.0)
-    contributors: int = 0           # How many unique users contributed
-    first_reported: float = field(default_factory=time.time)
-    last_updated: float = field(default_factory=time.time)
-    payload_hash: str = ""          # SHA256 of payload (not the payload itself)
-    success_rate: float = 0.0
-    sample_size: int = 0
+class FederatedPattern:
+    """An anonymised pattern from the community intelligence network."""
+
+    pattern_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
+    vuln_type: str = ""
+    technology: str = ""
+    payload_hash: str = ""
+    effectiveness: float = 0.0
+    contributor_count: int = 0
+    first_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_confirmed: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    waf_bypasses: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a Supabase-ready dict."""
+        return {
+            "pattern_id": self.pattern_id,
+            "vuln_type": self.vuln_type,
+            "technology": self.technology,
+            "payload_hash": self.payload_hash,
+            "effectiveness": self.effectiveness,
+            "contributor_count": self.contributor_count,
+            "first_seen": self.first_seen.isoformat() if isinstance(self.first_seen, datetime) else str(self.first_seen),
+            "last_confirmed": self.last_confirmed.isoformat() if isinstance(self.last_confirmed, datetime) else str(self.last_confirmed),
+            "waf_bypasses": self.waf_bypasses,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> FederatedPattern:
+        """Deserialise from a Supabase response row."""
+        first_seen = d.get("first_seen", "")
+        last_confirmed = d.get("last_confirmed", "")
+        try:
+            fs = datetime.fromisoformat(first_seen) if first_seen else datetime.now(timezone.utc)
+        except (ValueError, TypeError):
+            fs = datetime.now(timezone.utc)
+        try:
+            lc = datetime.fromisoformat(last_confirmed) if last_confirmed else datetime.now(timezone.utc)
+        except (ValueError, TypeError):
+            lc = datetime.now(timezone.utc)
+
+        return cls(
+            pattern_id=d.get("pattern_id", d.get("id", uuid.uuid4().hex[:16])),
+            vuln_type=d.get("vuln_type", ""),
+            technology=d.get("technology", ""),
+            payload_hash=d.get("payload_hash", ""),
+            effectiveness=float(d.get("effectiveness", 0.0)),
+            contributor_count=int(d.get("contributor_count", 0)),
+            first_seen=fs,
+            last_confirmed=lc,
+            waf_bypasses=d.get("waf_bypasses", []),
+            metadata=d.get("metadata", {}),
+        )
 
 
-@dataclass
-class LocalContribution:
-    """Data we're willing to share (anonymized)."""
-    technology: str = ""            # e.g., "wordpress", "nginx"
-    technology_version: str = ""    # e.g., "6.4", "1.25"
-    vulnerability_type: str = ""    # e.g., "sqli", "xss"
-    waf_detected: str = ""          # e.g., "cloudflare", "aws_waf"
-    payload_hash: str = ""          # SHA256 hash of successful payload
-    success: bool = False
-    evasion_technique: str = ""     # e.g., "double_url_encode", "unicode_normalization"
-    timestamp: float = field(default_factory=time.time)
+# ---------------------------------------------------------------------------
+# Sensitive-field blacklist for anonymisation
+# ---------------------------------------------------------------------------
 
-    @staticmethod
-    def hash_payload(payload: str) -> str:
-        """Hash a payload for privacy-preserving sharing."""
-        return hashlib.sha256(payload.encode()).hexdigest()
+_SENSITIVE_KEYS = frozenset({
+    "target", "target_url", "url", "host", "hostname", "ip", "ip_address",
+    "domain", "fqdn", "email", "username", "password", "credential",
+    "credentials", "api_key", "token", "secret", "cookie", "session",
+    "authorization", "auth", "org", "organisation", "organization",
+    "company", "internal_url", "path", "full_payload",
+})
 
 
 class FederatedMemory:
     """
-    Community intelligence layer — opt-in, privacy-first.
+    Community intelligence layer — opt-in, privacy-first, async.
 
-    Usage:
-        mem = FederatedMemory(enabled=True)
-        mem.load()
+    All network calls are ``async`` and use ``httpx.AsyncClient`` to talk
+    to a Supabase REST API.  The class degrades gracefully: if httpx is
+    not installed, if the connection fails, or if the user has not opted
+    in, every method returns an empty result rather than raising.
+
+    Usage::
+
+        mem = FederatedMemory(
+            supabase_url="https://xxx.supabase.co",
+            supabase_key="eyJ...",
+            enabled=True,
+        )
 
         # Query community intelligence
-        insights = mem.query(conditions={"waf": "cloudflare", "vuln_type": "sqli"})
-        for i in insights:
-            print(f"{i.insight} ({i.confidence:.0%} confidence, {i.contributors} users)")
+        patterns = await mem.query_patterns("sqli", tech="wordpress")
+        for p in patterns:
+            print(f"{p.vuln_type} on {p.technology}: "
+                  f"{p.effectiveness:.0%} ({p.contributor_count} contributors)")
 
-        # Contribute anonymized data
-        mem.contribute(LocalContribution(
-            technology="wordpress",
-            technology_version="6.4",
-            vulnerability_type="sqli",
-            waf_detected="cloudflare",
-            payload_hash=LocalContribution.hash_payload("' OR 1=1--"),
-            success=True,
-            evasion_technique="double_url_encode",
+        # Contribute an anonymised pattern
+        await mem.contribute_pattern(FederatedPattern(
+            vuln_type="sqli",
+            technology="mysql",
+            payload_hash=FederatedMemory.hash_payload("' OR 1=1--"),
+            effectiveness=0.85,
+            waf_bypasses=["cloudflare"],
         ))
 
-        mem.persist()
+        # WAF bypass intelligence
+        bypasses = await mem.query_waf_bypasses("cloudflare")
+
+        # Trending vulns across the community
+        trending = await mem.get_trending_vulns()
     """
 
-    def __init__(self, enabled: bool = False, storage_dir: str = ""):
-        self.enabled = enabled
-        if not storage_dir:
-            storage_dir = os.path.join(os.path.expanduser("~"), ".secprobe", "memory", "federated")
-        self._storage_dir = storage_dir
-        self._insights: dict[str, FederatedInsight] = {}
-        self._contributions: list[LocalContribution] = []
-        self._pending_sync: list[LocalContribution] = []
+    _TABLE = "federated_patterns"
+    _REQUEST_TIMEOUT = 10.0  # seconds
 
-    def query(self, *, category: str = "",
-              conditions: dict[str, Any] | None = None,
-              min_confidence: float = 0.5,
-              min_contributors: int = 2) -> list[FederatedInsight]:
-        """Query community insights."""
-        if not self.enabled:
+    def __init__(
+        self,
+        supabase_url: str | None = None,
+        supabase_key: str | None = None,
+        enabled: bool = False,
+    ):
+        self.enabled = enabled
+        self._supabase_url = (supabase_url or "").rstrip("/")
+        self._supabase_key = supabase_key or ""
+        self._client: Any = None  # httpx.AsyncClient, created lazily
+
+    # ------------------------------------------------------------------
+    # HTTP helpers
+    # ------------------------------------------------------------------
+
+    async def _get_client(self):
+        """Lazily create an httpx.AsyncClient with Supabase headers."""
+        if self._client is None:
+            httpx = _get_httpx()
+            self._client = httpx.AsyncClient(
+                base_url=f"{self._supabase_url}/rest/v1",
+                headers={
+                    "apikey": self._supabase_key,
+                    "Authorization": f"Bearer {self._supabase_key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation",
+                },
+                timeout=self._REQUEST_TIMEOUT,
+            )
+        return self._client
+
+    async def _safe_request(self, method: str, path: str, **kwargs) -> list[dict]:
+        """
+        Execute an HTTP request, returning parsed JSON on success or an
+        empty list on any failure.  Logs warnings but never raises.
+        """
+        if not self.enabled or not self._supabase_url or not self._supabase_key:
+            return []
+        try:
+            client = await self._get_client()
+            response = await getattr(client, method)(path, **kwargs)
+            response.raise_for_status()
+            data = response.json()
+            return data if isinstance(data, list) else [data] if data else []
+        except Exception:
+            logger.warning(
+                "Federated memory %s %s failed", method.upper(), path,
+                exc_info=True,
+            )
             return []
 
-        results = list(self._insights.values())
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
-        if category:
-            results = [i for i in results if i.category == category]
+    # ------------------------------------------------------------------
+    # Query operations
+    # ------------------------------------------------------------------
 
-        if min_confidence > 0:
-            results = [i for i in results if i.confidence >= min_confidence]
+    async def query_patterns(
+        self, vuln_type: str, tech: str | None = None, limit: int = 50
+    ) -> list[FederatedPattern]:
+        """
+        Query community intelligence for patterns matching *vuln_type*
+        and optionally *tech*.
 
-        if min_contributors > 0:
-            results = [i for i in results if i.contributors >= min_contributors]
-
-        if conditions:
-            matched = []
-            for insight in results:
-                overlap = any(
-                    k in insight.conditions and insight.conditions[k] == v
-                    for k, v in conditions.items()
-                )
-                if overlap:
-                    matched.append(insight)
-            results = matched
-
-        results.sort(key=lambda i: (i.confidence, i.contributors), reverse=True)
-        return results
-
-    def contribute(self, contribution: LocalContribution):
-        """Add an anonymized contribution for future sync."""
-        if not self.enabled:
-            return
-        self._contributions.append(contribution)
-        self._pending_sync.append(contribution)
-
-        # Also update local insights based on our own contributions
-        self._update_local_insight(contribution)
-
-    def _update_local_insight(self, contrib: LocalContribution):
-        """Update local insight database from our own contribution."""
-        key = f"{contrib.technology}:{contrib.vulnerability_type}:{contrib.waf_detected}"
-        insight_id = hashlib.sha256(key.encode()).hexdigest()[:16]
-
-        existing = self._insights.get(insight_id)
-        if existing:
-            existing.sample_size += 1
-            if contrib.success:
-                existing.success_rate = (
-                    (existing.success_rate * (existing.sample_size - 1) + 1.0)
-                    / existing.sample_size
-                )
-            else:
-                existing.success_rate = (
-                    (existing.success_rate * (existing.sample_size - 1) + 0.0)
-                    / existing.sample_size
-                )
-            existing.last_updated = time.time()
-        else:
-            self._insights[insight_id] = FederatedInsight(
-                id=insight_id,
-                category="local_observation",
-                conditions={
-                    "technology": contrib.technology,
-                    "vulnerability_type": contrib.vulnerability_type,
-                    "waf": contrib.waf_detected,
-                },
-                insight=f"{contrib.vulnerability_type} on {contrib.technology} "
-                        f"{'succeeded' if contrib.success else 'failed'}"
-                        f"{' (WAF: ' + contrib.waf_detected + ')' if contrib.waf_detected else ''}",
-                confidence=1.0 if contrib.success else 0.0,
-                contributors=1,
-                success_rate=1.0 if contrib.success else 0.0,
-                sample_size=1,
-                payload_hash=contrib.payload_hash,
-            )
-
-    def get_pending_sync(self) -> list[dict]:
-        """Get contributions ready for network sync (anonymized dicts)."""
-        pending = [
-            {
-                "technology": c.technology,
-                "technology_version": c.technology_version,
-                "vulnerability_type": c.vulnerability_type,
-                "waf_detected": c.waf_detected,
-                "payload_hash": c.payload_hash,
-                "success": c.success,
-                "evasion_technique": c.evasion_technique,
-            }
-            for c in self._pending_sync
-        ]
-        self._pending_sync.clear()
-        return pending
-
-    def ingest_remote(self, insights: list[dict]):
-        """Ingest insights received from the federated network."""
-        for item in insights:
-            insight = FederatedInsight(
-                id=item.get("id", ""),
-                category=item.get("category", "community"),
-                conditions=item.get("conditions", {}),
-                insight=item.get("insight", ""),
-                confidence=item.get("confidence", 0.5),
-                contributors=item.get("contributors", 1),
-                success_rate=item.get("success_rate", 0.0),
-                sample_size=item.get("sample_size", 1),
-                payload_hash=item.get("payload_hash", ""),
-            )
-            self._insights[insight.id] = insight
-
-    @property
-    def count(self) -> int:
-        return len(self._insights)
-
-    @property
-    def contribution_count(self) -> int:
-        return len(self._contributions)
-
-    def persist(self) -> str:
-        """Save insights and contributions to disk."""
-        os.makedirs(self._storage_dir, exist_ok=True)
-        path = os.path.join(self._storage_dir, "federated.json")
-        data = {
-            "insights": [
-                {
-                    "id": i.id, "category": i.category,
-                    "conditions": i.conditions, "insight": i.insight,
-                    "confidence": i.confidence, "contributors": i.contributors,
-                    "first_reported": i.first_reported, "last_updated": i.last_updated,
-                    "success_rate": i.success_rate, "sample_size": i.sample_size,
-                    "payload_hash": i.payload_hash,
-                }
-                for i in self._insights.values()
-            ],
-            "contributions": [
-                {
-                    "technology": c.technology,
-                    "technology_version": c.technology_version,
-                    "vulnerability_type": c.vulnerability_type,
-                    "waf_detected": c.waf_detected,
-                    "payload_hash": c.payload_hash,
-                    "success": c.success,
-                    "evasion_technique": c.evasion_technique,
-                    "timestamp": c.timestamp,
-                }
-                for c in self._contributions
-            ],
+        Returns patterns sorted by effectiveness (highest first).
+        """
+        params: dict[str, str] = {
+            "vuln_type": f"eq.{vuln_type}",
+            "order": "effectiveness.desc",
+            "limit": str(limit),
         }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        return path
+        if tech:
+            params["technology"] = f"eq.{tech}"
 
-    def load(self) -> int:
-        """Load from disk. Returns count of insights loaded."""
-        path = os.path.join(self._storage_dir, "federated.json")
-        if not os.path.exists(path):
-            return 0
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        for item in data.get("insights", []):
-            self._insights[item["id"]] = FederatedInsight(
-                id=item["id"], category=item.get("category", ""),
-                conditions=item.get("conditions", {}),
-                insight=item.get("insight", ""),
-                confidence=item.get("confidence", 0.5),
-                contributors=item.get("contributors", 1),
-                first_reported=item.get("first_reported", 0),
-                last_updated=item.get("last_updated", 0),
-                success_rate=item.get("success_rate", 0.0),
-                sample_size=item.get("sample_size", 1),
-                payload_hash=item.get("payload_hash", ""),
+        rows = await self._safe_request("get", f"/{self._TABLE}", params=params)
+        patterns = [FederatedPattern.from_dict(r) for r in rows]
+        patterns.sort(key=lambda p: p.effectiveness, reverse=True)
+        return patterns
+
+    async def query_waf_bypasses(self, waf_name: str, limit: int = 30) -> list[dict]:
+        """
+        Get community-shared WAF bypass techniques for *waf_name*.
+
+        Returns a list of dicts, each containing the bypass pattern's
+        vuln_type, technology, effectiveness, and contributor_count.
+        """
+        params: dict[str, str] = {
+            "waf_bypasses": f"cs.{{{waf_name}}}",  # Supabase array contains
+            "order": "effectiveness.desc",
+            "limit": str(limit),
+        }
+        rows = await self._safe_request("get", f"/{self._TABLE}", params=params)
+        return [
+            {
+                "pattern_id": r.get("pattern_id", ""),
+                "vuln_type": r.get("vuln_type", ""),
+                "technology": r.get("technology", ""),
+                "payload_hash": r.get("payload_hash", ""),
+                "effectiveness": r.get("effectiveness", 0.0),
+                "contributor_count": r.get("contributor_count", 0),
+                "waf_bypasses": r.get("waf_bypasses", []),
+            }
+            for r in rows
+        ]
+
+    async def get_trending_vulns(self, limit: int = 20) -> list[dict]:
+        """
+        Get the most frequently confirmed vulnerability types across the
+        community in recent time.
+
+        Returns dicts with keys: vuln_type, technology, effectiveness,
+        contributor_count, last_confirmed.
+        """
+        params: dict[str, str] = {
+            "order": "contributor_count.desc,last_confirmed.desc",
+            "limit": str(limit),
+        }
+        rows = await self._safe_request("get", f"/{self._TABLE}", params=params)
+        return [
+            {
+                "vuln_type": r.get("vuln_type", ""),
+                "technology": r.get("technology", ""),
+                "effectiveness": r.get("effectiveness", 0.0),
+                "contributor_count": r.get("contributor_count", 0),
+                "last_confirmed": r.get("last_confirmed", ""),
+            }
+            for r in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # Contribute operations
+    # ------------------------------------------------------------------
+
+    async def contribute_pattern(self, pattern: FederatedPattern) -> bool:
+        """
+        Anonymise and share a successful pattern with the community.
+
+        **Privacy guarantee**: this method passes all outgoing data through
+        ``_anonymise()`` which strips any sensitive fields.  Only the
+        following are transmitted:
+
+        - ``vuln_type``
+        - ``technology``
+        - ``payload_hash`` (SHA-256 of the payload, never the payload itself)
+        - ``effectiveness``
+        - ``waf_bypasses`` (WAF product names only)
+
+        Returns ``True`` if the contribution was accepted by the server.
+        """
+        if not self.enabled:
+            return False
+
+        safe_data = self._anonymise(pattern.to_dict())
+        rows = await self._safe_request(
+            "post", f"/{self._TABLE}", json=safe_data
+        )
+        if rows:
+            logger.info(
+                "Contributed pattern %s (%s / %s)",
+                pattern.pattern_id, pattern.vuln_type, pattern.technology,
             )
-        return len(self._insights)
+            return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Anonymisation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _anonymise(data: dict) -> dict:
+        """
+        Strip all identifying information before sharing.
+
+        Removes any key whose name appears in ``_SENSITIVE_KEYS`` and
+        recursively sanitises nested dicts.  The ``metadata`` field is
+        dropped entirely since it may contain arbitrary user data.
+        """
+        cleaned: dict[str, Any] = {}
+        for key, value in data.items():
+            lower_key = key.lower()
+            # Drop sensitive keys entirely
+            if lower_key in _SENSITIVE_KEYS:
+                continue
+            # Drop metadata — it can contain anything
+            if lower_key == "metadata":
+                continue
+            # Recurse into nested dicts
+            if isinstance(value, dict):
+                value = FederatedMemory._anonymise(value)
+            cleaned[key] = value
+        return cleaned
+
+    @staticmethod
+    def hash_payload(payload: str) -> str:
+        """
+        Hash a payload for privacy-preserving sharing.
+
+        Uses SHA-256 so the community can deduplicate patterns without
+        ever seeing the raw payload text.
+        """
+        return hashlib.sha256(
+            payload.encode("utf-8", errors="replace")
+        ).hexdigest()
+
+    # ------------------------------------------------------------------
+    # Lifecycle helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def is_configured(self) -> bool:
+        """Whether the federated tier has valid connection details."""
+        return bool(self.enabled and self._supabase_url and self._supabase_key)
+
+    def __repr__(self) -> str:
+        status = "enabled" if self.is_configured else "disabled"
+        return f"<FederatedMemory status={status}>"
