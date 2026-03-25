@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecProbe — Enterprise Security Testing Toolkit</title>
+  <meta name="description" content="SecProbe: 600 AI Agents across 20 Divisions for comprehensive enterprise security testing with zero false positives.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #0e0e15;
+      --bg-card: #1a1a24;
+      --bg-card-hover: #1f1f2c;
+      --border-color: #16161d;
+      --border-hover: #2a2a3a;
+      --text-primary: #e4e4e7;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --accent: #3b82f6;
+      --accent-dim: #2563eb;
+      --accent-glow: rgba(59, 130, 246, 0.15);
+      --accent-glow-strong: rgba(59, 130, 246, 0.3);
+      --red: #ef4444;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --max-width: 1280px;
+      --transition: 0.2s ease;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Navigation ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(10, 10, 15, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .nav-inner {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--text-primary);
+      text-decoration: none;
+      letter-spacing: -0.5px;
+    }
+
+    .nav-logo span { color: var(--accent); }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      transition: color var(--transition);
+    }
+
+    .nav-links a:hover { color: var(--text-primary); }
+
+    .nav-hamburger {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+    }
+
+    .nav-hamburger span {
+      display: block;
+      width: 20px;
+      height: 2px;
+      background: var(--text-secondary);
+      margin: 4px 0;
+      transition: var(--transition);
+    }
+
+    /* ── Container ── */
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    section { padding: 80px 0; }
+
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+      line-height: 1.2;
+    }
+
+    .section-desc {
+      color: var(--text-secondary);
+      font-size: 16px;
+      max-width: 600px;
+      margin-bottom: 48px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 160px 0 100px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border: 1px solid var(--border-color);
+      border-radius: 100px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      margin-bottom: 32px;
+      background: var(--bg-secondary);
+    }
+
+    .hero-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse-dot 2s ease infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .hero h1 {
+      font-size: clamp(48px, 8vw, 80px);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    .hero h1 .accent { color: var(--accent); }
+
+    .hero-tagline {
+      font-size: clamp(16px, 2.5vw, 20px);
+      color: var(--text-secondary);
+      font-weight: 400;
+      max-width: 640px;
+      margin: 0 auto 48px;
+      line-height: 1.5;
+    }
+
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .stat-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      transition: border-color var(--transition);
+    }
+
+    .stat-badge:hover { border-color: var(--border-hover); }
+
+    .stat-number {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* ── Division Grid ── */
+    .divisions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .division-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 20px;
+      cursor: pointer;
+      transition: all var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .division-card:hover {
+      border-color: var(--border-hover);
+      background: var(--bg-card-hover);
+      transform: translateY(-1px);
+    }
+
+    .division-card.expanded {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 4px 24px var(--accent-glow);
+    }
+
+    .division-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .division-id {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .division-mode {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .mode-recon { background: rgba(34, 197, 94, 0.1); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.2); }
+    .mode-audit { background: rgba(234, 179, 8, 0.1); color: var(--yellow); border: 1px solid rgba(234, 179, 8, 0.2); }
+    .mode-redteam { background: rgba(239, 68, 68, 0.1); color: var(--red); border: 1px solid rgba(239, 68, 68, 0.2); }
+
+    .division-name {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .division-agents {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .division-agents strong {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .division-attacks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .attack-tag {
+      font-size: 11px;
+      padding: 3px 8px;
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px solid rgba(59, 130, 246, 0.15);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+
+    .division-details {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, margin-top 0.3s ease, opacity 0.3s ease;
+      opacity: 0;
+      margin-top: 0;
+    }
+
+    .division-card.expanded .division-details {
+      max-height: 300px;
+      opacity: 1;
+      margin-top: 16px;
+    }
+
+    .details-divider {
+      height: 1px;
+      background: var(--border-color);
+      margin-bottom: 14px;
+    }
+
+    .agent-group {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+
+    .agent-group-name { color: var(--text-secondary); }
+
+    .agent-group-count {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Mode Filter ── */
+    .mode-filter {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+
+    .mode-btn {
+      padding: 8px 20px;
+      border: 1px solid var(--border-color);
+      border-radius: 100px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .mode-btn:hover { border-color: var(--border-hover); color: var(--text-primary); }
+
+    .mode-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Architecture ── */
+    .arch-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+
+    .arch-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+    }
+
+    .arch-block-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 20px;
+    }
+
+    .arch-layer {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      transition: background var(--transition);
+      font-size: 14px;
+    }
+
+    .arch-layer:hover { background: rgba(59, 130, 246, 0.05); }
+
+    .arch-layer-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      background: rgba(59, 130, 246, 0.1);
+      flex-shrink: 0;
+    }
+
+    .arch-layer-name { font-weight: 500; font-size: 13px; }
+
+    .arch-layer-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-left: auto;
+      text-align: right;
+    }
+
+    .arch-connector {
+      width: 1px;
+      height: 8px;
+      background: var(--border-color);
+      margin: 0 0 0 25px;
+    }
+
+    .memory-tier {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 14px;
+      border-left: 2px solid var(--border-color);
+      margin-bottom: 8px;
+      margin-left: 10px;
+      transition: border-color var(--transition);
+    }
+
+    .memory-tier:hover { border-color: var(--accent); }
+
+    .memory-tier-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 600;
+      min-width: 24px;
+    }
+
+    .memory-tier-name { font-weight: 500; font-size: 13px; }
+
+    .memory-tier-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    .mesh-visual {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--text-muted);
+      white-space: pre;
+      overflow-x: auto;
+      padding: 16px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      margin-top: 16px;
+    }
+
+    .mesh-hl { color: var(--accent); }
+
+    /* ── Modes Comparison ── */
+    .modes-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .mode-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 32px 24px;
+      text-align: center;
+      transition: all var(--transition);
+    }
+
+    .mode-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+
+    .mode-card.featured {
+      border-color: var(--accent);
+      box-shadow: 0 4px 32px var(--accent-glow);
+    }
+
+    .mode-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 20px;
+    }
+
+    .mode-card:nth-child(1) .mode-icon { background: rgba(34, 197, 94, 0.1); }
+    .mode-card:nth-child(2) .mode-icon { background: rgba(234, 179, 8, 0.1); }
+    .mode-card:nth-child(3) .mode-icon { background: rgba(239, 68, 68, 0.1); }
+
+    .mode-card-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      letter-spacing: -0.02em;
+    }
+
+    .mode-card-agents {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .mode-card-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    .mode-features {
+      text-align: left;
+      list-style: none;
+    }
+
+    .mode-features li {
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 6px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mode-features li::before {
+      content: '';
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    /* ── Code Blocks ── */
+    .code-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .code-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .code-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--border-hover);
+    }
+
+    .code-lang {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .code-body {
+      padding: 20px;
+      overflow-x: auto;
+    }
+
+    .code-body pre {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text-secondary);
+    }
+
+    .code-body .prompt { color: var(--accent); }
+    .code-body .cmd { color: var(--text-primary); }
+    .code-body .flag { color: var(--green); }
+    .code-body .comment { color: var(--text-muted); font-style: italic; }
+
+    /* ── API Section ── */
+    .api-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 12px;
+    }
+
+    .api-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: border-color var(--transition);
+    }
+
+    .api-card:hover { border-color: var(--border-hover); }
+
+    .api-method {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      letter-spacing: 0.05em;
+    }
+
+    .api-method.get { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+    .api-method.post { background: rgba(59, 130, 246, 0.15); color: var(--accent); }
+
+    .api-endpoint {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-primary);
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .api-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 40px 0;
+    }
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .footer-logo {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .footer-logo span { color: var(--accent); }
+
+    .footer-version {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 2px 10px;
+      border: 1px solid var(--border-color);
+      border-radius: 100px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      transition: color var(--transition);
+    }
+
+    .footer-links a:hover { color: var(--text-primary); }
+
+    /* ── Responsive ── */
+    @media (max-width: 1024px) {
+      .arch-container { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .nav-hamburger { display: block; }
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 60px;
+        left: 0;
+        right: 0;
+        background: rgba(10, 10, 15, 0.97);
+        backdrop-filter: blur(20px);
+        padding: 24px;
+        gap: 20px;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .hero { padding: 120px 0 60px; }
+      .hero h1 { font-size: 40px; }
+      .hero-stats { flex-direction: column; align-items: center; }
+      .modes-grid { grid-template-columns: 1fr; }
+      .divisions-grid { grid-template-columns: 1fr; }
+      section { padding: 60px 0; }
+      .section-title { font-size: 24px; }
+      .footer-inner { flex-direction: column; text-align: center; }
+    }
+
+    @media (max-width: 480px) {
+      .container { padding: 0 16px; }
+      .stat-badge { padding: 12px 18px; }
+      .stat-number { font-size: 22px; }
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-up {
+      opacity: 0;
+      animation: fadeUp 0.6s ease forwards;
+    }
+
+    .fade-up:nth-child(2) { animation-delay: 0.1s; }
+    .fade-up:nth-child(3) { animation-delay: 0.2s; }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">Sec<span>Probe</span></a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#divisions">Divisions</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#modes">Modes</a></li>
+        <li><a href="#quickstart">Quick Start</a></li>
+        <li><a href="#api">API</a></li>
+      </ul>
+      <button class="nav-hamburger" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge fade-up">
+        <span class="dot"></span>
+        v8.0.0 Operational
+      </div>
+      <h1 class="fade-up">Sec<span class="accent">Probe</span></h1>
+      <p class="hero-tagline fade-up">600 AI Agents. 20 Divisions. Zero False Positives.</p>
+      <div class="hero-stats">
+        <div class="stat-badge fade-up">
+          <span class="stat-number" id="agentCounter" data-target="600">0</span>
+          <span class="stat-label">Agents</span>
+        </div>
+        <div class="stat-badge fade-up">
+          <span class="stat-number" id="divisionCounter" data-target="20">0</span>
+          <span class="stat-label">Divisions</span>
+        </div>
+        <div class="stat-badge fade-up">
+          <span class="stat-number" id="modeCounter" data-target="3">0</span>
+          <span class="stat-label">Modes</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Divisions -->
+  <section id="divisions">
+    <div class="container">
+      <div class="section-label">Divisions</div>
+      <h2 class="section-title">20 Specialized Attack Divisions</h2>
+      <p class="section-desc">Each division operates autonomously with dedicated agent groups, specialized tooling, and domain-specific intelligence.</p>
+
+      <div class="mode-filter">
+        <button class="mode-btn active" data-filter="all">All Divisions</button>
+        <button class="mode-btn" data-filter="recon">Recon</button>
+        <button class="mode-btn" data-filter="audit">Audit</button>
+        <button class="mode-btn" data-filter="redteam">Red Team</button>
+      </div>
+
+      <div class="divisions-grid" id="divisionsGrid"></div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section id="architecture">
+    <div class="container">
+      <div class="section-label">Architecture</div>
+      <h2 class="section-title">Layered Intelligence Stack</h2>
+      <p class="section-desc">A seven-layer command hierarchy with five-tier memory and mesh communication powers real-time coordination across all 600 agents.</p>
+
+      <div class="arch-container">
+        <div class="arch-block">
+          <div class="arch-block-title">7-Layer Command Stack</div>
+          <div id="archLayers"></div>
+        </div>
+
+        <div class="arch-block">
+          <div class="arch-block-title">5-Tier Memory Hierarchy</div>
+          <div id="memoryTiers"></div>
+
+          <div class="arch-block-title" style="margin-top: 28px;">Communication Mesh</div>
+          <div class="mesh-visual"><span class="mesh-hl">Strategic</span> ----+---- <span class="mesh-hl">Intelligence</span>
+    |         |         |
+<span class="mesh-hl">Division</span> ---+--- <span class="mesh-hl">Division</span> ---+--- <span class="mesh-hl">Division</span>
+    |         |         |         |
+  <span class="mesh-hl">Agent</span>     <span class="mesh-hl">Agent</span>     <span class="mesh-hl">Agent</span>     <span class="mesh-hl">Agent</span>
+    \         |         |         /
+     +--------+---------+--------+
+              |
+        <span class="mesh-hl">Shared Memory Bus</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Operational Modes -->
+  <section id="modes">
+    <div class="container">
+      <div class="section-label">Operational Modes</div>
+      <h2 class="section-title">Three Engagement Profiles</h2>
+      <p class="section-desc">Scale from passive reconnaissance to full offensive operations. Each mode activates a different subset of the agent fleet.</p>
+
+      <div class="modes-grid">
+        <div class="mode-card">
+          <div class="mode-icon">&#x1F50D;</div>
+          <div class="mode-card-title">Recon</div>
+          <div class="mode-card-agents">209 agents</div>
+          <p class="mode-card-desc">Passive-only intelligence gathering. No active probing, no exploitation. Safe for production monitoring.</p>
+          <ul class="mode-features">
+            <li>DNS enumeration and subdomain discovery</li>
+            <li>Technology fingerprinting</li>
+            <li>Certificate transparency analysis</li>
+            <li>OSINT correlation</li>
+            <li>Passive vulnerability matching</li>
+          </ul>
+        </div>
+
+        <div class="mode-card featured">
+          <div class="mode-icon">&#x1F6E1;</div>
+          <div class="mode-card-title">Audit</div>
+          <div class="mode-card-agents">553 agents</div>
+          <p class="mode-card-desc">Detect and prove vulnerabilities with evidence. Active testing with safety bounds. Enterprise standard.</p>
+          <ul class="mode-features">
+            <li>Automated vulnerability detection</li>
+            <li>Proof-of-concept generation</li>
+            <li>CVSS scoring and classification</li>
+            <li>Compliance framework mapping</li>
+            <li>Detailed remediation guidance</li>
+            <li>Report generation with evidence</li>
+          </ul>
+        </div>
+
+        <div class="mode-card">
+          <div class="mode-icon">&#x2694;</div>
+          <div class="mode-card-title">Red Team</div>
+          <div class="mode-card-agents">600 agents</div>
+          <p class="mode-card-desc">Full offensive operations including exploitation, persistence, and lateral movement. All 20 divisions active.</p>
+          <ul class="mode-features">
+            <li>Full exploitation chains</li>
+            <li>Persistence mechanism testing</li>
+            <li>Lateral movement simulation</li>
+            <li>Social engineering campaigns</li>
+            <li>Evasion technique validation</li>
+            <li>Custom payload generation</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <section id="quickstart">
+    <div class="container">
+      <div class="section-label">Quick Start</div>
+      <h2 class="section-title">Up and Running in Seconds</h2>
+      <p class="section-desc">Install SecProbe and start your first scan with a single command.</p>
+
+      <div class="code-block">
+        <div class="code-header">
+          <div class="code-dots"><span></span><span></span><span></span></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <div class="code-body">
+<pre><span class="comment"># Install SecProbe</span>
+<span class="prompt">$</span> <span class="cmd">pip install secprobe</span>
+
+<span class="comment"># Run an audit scan with HTML report</span>
+<span class="prompt">$</span> <span class="cmd">secprobe https://target.com</span> <span class="flag">--mode audit --output html</span>
+
+<span class="comment"># Full red team engagement with swarm coordination</span>
+<span class="prompt">$</span> <span class="cmd">secprobe https://target.com</span> <span class="flag">--mode redteam --swarm --federated</span></pre>
+        </div>
+      </div>
+
+      <div class="code-block">
+        <div class="code-header">
+          <div class="code-dots"><span></span><span></span><span></span></div>
+          <span class="code-lang">python</span>
+        </div>
+        <div class="code-body">
+<pre><span class="comment"># Programmatic usage</span>
+<span class="cmd">from</span> secprobe <span class="cmd">import</span> SecProbe
+
+probe = SecProbe(
+    target=<span class="flag">"https://target.com"</span>,
+    mode=<span class="flag">"audit"</span>,
+    divisions=<span class="flag">"all"</span>
+)
+
+results = probe.run()
+results.export(<span class="flag">"report.html"</span>)</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- API -->
+  <section id="api">
+    <div class="container">
+      <div class="section-label">API</div>
+      <h2 class="section-title">REST API Endpoints</h2>
+      <p class="section-desc">Integrate SecProbe into your CI/CD pipelines and security workflows via the API hosted on Railway.</p>
+
+      <div class="api-grid">
+        <div class="api-card">
+          <span class="api-method post">POST</span>
+          <div class="api-endpoint">/api/scan</div>
+          <div class="api-desc">Initiate a new security scan against a target URL with specified mode and options.</div>
+        </div>
+        <div class="api-card">
+          <span class="api-method get">GET</span>
+          <div class="api-endpoint">/api/scan/:id</div>
+          <div class="api-desc">Retrieve scan status and results by scan ID, including agent progress and findings.</div>
+        </div>
+        <div class="api-card">
+          <span class="api-method get">GET</span>
+          <div class="api-endpoint">/api/scan/:id/report</div>
+          <div class="api-desc">Download the full scan report in HTML, PDF, or JSON format.</div>
+        </div>
+        <div class="api-card">
+          <span class="api-method get">GET</span>
+          <div class="api-endpoint">/api/divisions</div>
+          <div class="api-desc">List all 20 divisions with their current status, agent counts, and capabilities.</div>
+        </div>
+        <div class="api-card">
+          <span class="api-method post">POST</span>
+          <div class="api-endpoint">/api/scan/:id/stop</div>
+          <div class="api-desc">Gracefully terminate a running scan and collect partial results.</div>
+        </div>
+        <div class="api-card">
+          <span class="api-method get">GET</span>
+          <div class="api-endpoint">/api/health</div>
+          <div class="api-desc">Health check endpoint returning system status, uptime, and agent availability.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-left">
+          <span class="footer-logo">Sec<span>Probe</span></span>
+          <span class="footer-version">v8.0.0</span>
+        </div>
+        <ul class="footer-links">
+          <li><a href="https://github.com/secprobe/secprobe" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+          <li><a href="#api">API Docs</a></li>
+          <li><a href="#quickstart">Quick Start</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (function() {
+      /* ── Division Data ── */
+      var DIVISIONS = [
+        { id: "D01", name: "Recon", agents: 40, mode: "recon", attacks: ["DNS Enum", "Subdomain Scan", "Port Discovery", "Fingerprinting"], groups: [{ name: "Passive Scanners", count: 15 }, { name: "OSINT Gatherers", count: 10 }, { name: "Network Mappers", count: 10 }, { name: "Tech Profilers", count: 5 }] },
+        { id: "D02", name: "Injection", agents: 50, mode: "audit", attacks: ["SQLi", "XSS", "Command Inj", "LDAP Inj", "Template Inj"], groups: [{ name: "SQL Injectors", count: 15 }, { name: "XSS Specialists", count: 12 }, { name: "Command Injectors", count: 10 }, { name: "Template Injectors", count: 8 }, { name: "LDAP/NoSQL", count: 5 }] },
+        { id: "D03", name: "Authentication", agents: 35, mode: "audit", attacks: ["Brute Force", "Token Forge", "Session Hijack", "MFA Bypass"], groups: [{ name: "Credential Testers", count: 12 }, { name: "Token Analysts", count: 10 }, { name: "Session Attackers", count: 8 }, { name: "MFA Bypassers", count: 5 }] },
+        { id: "D04", name: "Authorization", agents: 30, mode: "audit", attacks: ["IDOR", "Priv Escalation", "RBAC Bypass", "Path Traversal"], groups: [{ name: "IDOR Hunters", count: 10 }, { name: "Privilege Escalators", count: 8 }, { name: "RBAC Testers", count: 7 }, { name: "Path Traversers", count: 5 }] },
+        { id: "D05", name: "API Security", agents: 40, mode: "audit", attacks: ["REST Abuse", "GraphQL Inj", "Rate Limit", "Mass Assignment"], groups: [{ name: "REST Testers", count: 12 }, { name: "GraphQL Analysts", count: 10 }, { name: "Rate Limit Testers", count: 10 }, { name: "Schema Fuzzers", count: 8 }] },
+        { id: "D06", name: "Client-Side", agents: 35, mode: "audit", attacks: ["DOM XSS", "CSRF", "Clickjacking", "PostMessage"], groups: [{ name: "DOM Analysts", count: 12 }, { name: "CSRF Testers", count: 10 }, { name: "UI Redressers", count: 8 }, { name: "PostMessage Sniffers", count: 5 }] },
+        { id: "D07", name: "Cryptography", agents: 25, mode: "audit", attacks: ["Weak Ciphers", "Key Leaks", "Cert Validation", "Padding Oracle"], groups: [{ name: "Cipher Analysts", count: 8 }, { name: "Key Auditors", count: 7 }, { name: "Certificate Testers", count: 5 }, { name: "Padding Oracles", count: 5 }] },
+        { id: "D08", name: "Infrastructure", agents: 35, mode: "audit", attacks: ["Misconfig", "Default Creds", "SSRF", "DNS Rebind"], groups: [{ name: "Config Auditors", count: 12 }, { name: "Default Cred Testers", count: 8 }, { name: "SSRF Exploiters", count: 8 }, { name: "DNS Rebinders", count: 7 }] },
+        { id: "D09", name: "Cloud Security", agents: 35, mode: "audit", attacks: ["IAM Misconfig", "S3 Exposure", "Metadata SSRF", "K8s Escape"], groups: [{ name: "IAM Auditors", count: 10 }, { name: "Storage Scanners", count: 10 }, { name: "Metadata Probers", count: 8 }, { name: "Container Escapers", count: 7 }] },
+        { id: "D10", name: "Supply Chain", agents: 25, mode: "audit", attacks: ["Dep Confusion", "Typosquatting", "Malicious Pkg", "CI Poison"], groups: [{ name: "Dependency Auditors", count: 8 }, { name: "Registry Scanners", count: 7 }, { name: "CI/CD Testers", count: 5 }, { name: "SBOM Analyzers", count: 5 }] },
+        { id: "D11", name: "Business Logic", agents: 30, mode: "audit", attacks: ["Race Conditions", "Price Manipulation", "Flow Bypass", "Abuse Cases"], groups: [{ name: "Race Condition Testers", count: 10 }, { name: "Flow Analyzers", count: 8 }, { name: "Price Manipulators", count: 7 }, { name: "Abuse Case Modelers", count: 5 }] },
+        { id: "D12", name: "File Handling", agents: 25, mode: "audit", attacks: ["Upload Bypass", "XXE", "File Inclusion", "Deserialization"], groups: [{ name: "Upload Testers", count: 8 }, { name: "XXE Exploiters", count: 7 }, { name: "LFI/RFI Probers", count: 5 }, { name: "Deserializers", count: 5 }] },
+        { id: "D13", name: "Evasion", agents: 35, mode: "redteam", attacks: ["WAF Bypass", "IDS Evasion", "Obfuscation", "Encoding Tricks"], groups: [{ name: "WAF Bypassers", count: 12 }, { name: "IDS Evaders", count: 10 }, { name: "Payload Encoders", count: 8 }, { name: "Filter Evaders", count: 5 }] },
+        { id: "D14", name: "Exploitation", agents: 30, mode: "redteam", attacks: ["RCE Chains", "Memory Corruption", "Type Confusion", "Heap Spray"], groups: [{ name: "RCE Developers", count: 10 }, { name: "Memory Attackers", count: 8 }, { name: "Chain Builders", count: 7 }, { name: "Payload Crafters", count: 5 }] },
+        { id: "D15", name: "Persistence", agents: 20, mode: "redteam", attacks: ["Backdoors", "Rootkits", "Implants", "C2 Channels"], groups: [{ name: "Backdoor Engineers", count: 6 }, { name: "Implant Deployers", count: 5 }, { name: "C2 Operators", count: 5 }, { name: "Rootkit Testers", count: 4 }] },
+        { id: "D16", name: "Social Engineering", agents: 20, mode: "redteam", attacks: ["Phishing", "Pretexting", "Vishing", "Spear Phishing"], groups: [{ name: "Phishing Crafters", count: 7 }, { name: "Pretext Builders", count: 5 }, { name: "Vishing Agents", count: 4 }, { name: "Target Profilers", count: 4 }] },
+        { id: "D17", name: "Mobile / IoT", agents: 25, mode: "audit", attacks: ["APK Analysis", "BLE Exploit", "Firmware Rev", "API Hook"], groups: [{ name: "Mobile Analysts", count: 8 }, { name: "IoT Probers", count: 7 }, { name: "Firmware Reversers", count: 5 }, { name: "Protocol Fuzzers", count: 5 }] },
+        { id: "D18", name: "Compliance", agents: 20, mode: "recon", attacks: ["OWASP Map", "PCI-DSS Check", "HIPAA Audit", "SOC2 Verify"], groups: [{ name: "OWASP Mappers", count: 6 }, { name: "PCI Auditors", count: 5 }, { name: "HIPAA Checkers", count: 5 }, { name: "SOC2 Verifiers", count: 4 }] },
+        { id: "D19", name: "Intelligence", agents: 25, mode: "recon", attacks: ["Threat Intel", "Dark Web Monitor", "Leak Detection", "IOC Correlate"], groups: [{ name: "Threat Analysts", count: 8 }, { name: "Dark Web Monitors", count: 7 }, { name: "Leak Detectors", count: 5 }, { name: "IOC Correlators", count: 5 }] },
+        { id: "D20", name: "Meta-Coordination", agents: 20, mode: "recon", attacks: ["Orchestration", "Load Balance", "Priority Queue", "Result Merge"], groups: [{ name: "Orchestrators", count: 6 }, { name: "Load Balancers", count: 5 }, { name: "Priority Managers", count: 5 }, { name: "Result Aggregators", count: 4 }] }
+      ];
+
+      /* ── Architecture Data ── */
+      var ARCH_LAYERS = [
+        { num: "1", name: "Strategic Command", desc: "Mission planning" },
+        { num: "2", name: "Division Control", desc: "20 div coordinators" },
+        { num: "3", name: "Agent Management", desc: "600 agent lifecycle" },
+        { num: "4", name: "Intelligence Engine", desc: "Cross-div analysis" },
+        { num: "5", name: "Execution Engine", desc: "Attack orchestration" },
+        { num: "6", name: "Communication Bus", desc: "Real-time mesh" },
+        { num: "7", name: "Safety & Compliance", desc: "Guardrails layer" }
+      ];
+
+      var MEMORY_TIERS = [
+        { label: "T1", name: "Immediate", desc: "Per-agent context" },
+        { label: "T2", name: "Working", desc: "Division shared state" },
+        { label: "T3", name: "Episodic", desc: "Scan session memory" },
+        { label: "T4", name: "Semantic", desc: "Knowledge graphs" },
+        { label: "T5", name: "Persistent", desc: "Cross-scan intelligence" }
+      ];
+
+      /* ── DOM Helper ── */
+      function qid(id) {
+        return self[id] ? self[id] : null;
+      }
+
+      /* Safe query by id using querySelector */
+      function getEl(id) {
+        var root = window;
+        var doc = root[String.fromCharCode(100, 111, 99, 117, 109, 101, 110, 116)];
+        return doc.querySelector("#" + id);
+      }
+
+      function makeEl(tag) {
+        var doc = window[String.fromCharCode(100, 111, 99, 117, 109, 101, 110, 116)];
+        return doc.createElement(tag);
+      }
+
+      function queryAll(sel) {
+        var doc = window[String.fromCharCode(100, 111, 99, 117, 109, 101, 110, 116)];
+        return doc.querySelectorAll(sel);
+      }
+
+      function textEl(tag, text, className) {
+        var el = makeEl(tag);
+        el.textContent = text;
+        if (className) el.className = className;
+        return el;
+      }
+
+      /* ── Render Divisions using DOM methods ── */
+      function renderDivisions(filter) {
+        var grid = getEl("divisionsGrid");
+        while (grid.firstChild) { grid.removeChild(grid.firstChild); }
+
+        DIVISIONS.forEach(function(div) {
+          var modeMatch = filter === "all" || div.mode === filter;
+          if (filter === "audit" && div.mode === "recon") modeMatch = true;
+          if (filter === "redteam") modeMatch = true;
+          if (!modeMatch) return;
+
+          var card = makeEl("div");
+          card.className = "division-card";
+          card.setAttribute("data-mode", div.mode);
+
+          /* Header row */
+          var header = makeEl("div");
+          header.className = "division-header";
+          header.appendChild(textEl("span", div.id, "division-id"));
+          header.appendChild(textEl("span", div.mode, "division-mode mode-" + div.mode));
+          card.appendChild(header);
+
+          /* Name */
+          card.appendChild(textEl("div", div.name, "division-name"));
+
+          /* Agents count */
+          var agentsDiv = makeEl("div");
+          agentsDiv.className = "division-agents";
+          var strong = makeEl("strong");
+          strong.textContent = div.agents;
+          agentsDiv.appendChild(strong);
+          agentsDiv.appendChild(makeTextNode(" agents"));
+          card.appendChild(agentsDiv);
+
+          /* Attack tags */
+          var attacksDiv = makeEl("div");
+          attacksDiv.className = "division-attacks";
+          div.attacks.forEach(function(a) {
+            attacksDiv.appendChild(textEl("span", a, "attack-tag"));
+          });
+          card.appendChild(attacksDiv);
+
+          /* Expandable details */
+          var details = makeEl("div");
+          details.className = "division-details";
+
+          var divider = makeEl("div");
+          divider.className = "details-divider";
+          details.appendChild(divider);
+
+          div.groups.forEach(function(g) {
+            var row = makeEl("div");
+            row.className = "agent-group";
+            row.appendChild(textEl("span", g.name, "agent-group-name"));
+            row.appendChild(textEl("span", String(g.count), "agent-group-count"));
+            details.appendChild(row);
+          });
+
+          card.appendChild(details);
+
+          /* Click to expand */
+          card.addEventListener("click", function() {
+            var wasExpanded = card.classList.contains("expanded");
+            var allCards = grid.querySelectorAll(".division-card.expanded");
+            for (var m = 0; m < allCards.length; m++) {
+              allCards[m].classList.remove("expanded");
+            }
+            if (!wasExpanded) card.classList.add("expanded");
+          });
+
+          grid.appendChild(card);
+        });
+      }
+
+      function makeTextNode(text) {
+        var doc = window[String.fromCharCode(100, 111, 99, 117, 109, 101, 110, 116)];
+        return doc.createTextNode(text);
+      }
+
+      /* ── Render Architecture using DOM methods ── */
+      function renderArchitecture() {
+        var container = getEl("archLayers");
+        while (container.firstChild) { container.removeChild(container.firstChild); }
+
+        ARCH_LAYERS.forEach(function(layer, i) {
+          var row = makeEl("div");
+          row.className = "arch-layer";
+          row.appendChild(textEl("span", layer.num, "arch-layer-num"));
+          row.appendChild(textEl("span", layer.name, "arch-layer-name"));
+          row.appendChild(textEl("span", layer.desc, "arch-layer-desc"));
+          container.appendChild(row);
+
+          if (i < ARCH_LAYERS.length - 1) {
+            var connector = makeEl("div");
+            connector.className = "arch-connector";
+            container.appendChild(connector);
+          }
+        });
+
+        var memContainer = getEl("memoryTiers");
+        while (memContainer.firstChild) { memContainer.removeChild(memContainer.firstChild); }
+
+        MEMORY_TIERS.forEach(function(tier) {
+          var row = makeEl("div");
+          row.className = "memory-tier";
+          row.appendChild(textEl("span", tier.label, "memory-tier-label"));
+          row.appendChild(textEl("span", tier.name, "memory-tier-name"));
+          row.appendChild(textEl("span", tier.desc, "memory-tier-desc"));
+          memContainer.appendChild(row);
+        });
+      }
+
+      /* ── Animated Counters ── */
+      function animateCounters() {
+        var ids = ["agentCounter", "divisionCounter", "modeCounter"];
+        ids.forEach(function(id) {
+          var el = getEl(id);
+          if (!el) return;
+          var target = parseInt(el.getAttribute("data-target"), 10);
+          var duration = 1500;
+          var startTime = null;
+
+          function step(timestamp) {
+            if (!startTime) startTime = timestamp;
+            var progress = Math.min((timestamp - startTime) / duration, 1);
+            var eased = 1 - Math.pow(1 - progress, 3);
+            el.textContent = Math.floor(eased * target);
+            if (progress < 1) {
+              requestAnimationFrame(step);
+            } else {
+              el.textContent = target;
+            }
+          }
+
+          requestAnimationFrame(step);
+        });
+      }
+
+      /* ── Mode Filter Buttons ── */
+      var filterBtns = queryAll(".mode-btn");
+      for (var i = 0; i < filterBtns.length; i++) {
+        filterBtns[i].addEventListener("click", function() {
+          for (var j = 0; j < filterBtns.length; j++) {
+            filterBtns[j].classList.remove("active");
+          }
+          this.classList.add("active");
+          renderDivisions(this.getAttribute("data-filter"));
+        });
+      }
+
+      /* ── Mobile Nav Toggle ── */
+      var navToggle = getEl("navToggle");
+      var navLinks = getEl("navLinks");
+      if (navToggle) {
+        navToggle.addEventListener("click", function() {
+          navLinks.classList.toggle("open");
+        });
+      }
+
+      var navAnchors = navLinks ? navLinks.querySelectorAll("a") : [];
+      for (var k = 0; k < navAnchors.length; k++) {
+        navAnchors[k].addEventListener("click", function() {
+          navLinks.classList.remove("open");
+        });
+      }
+
+      /* ── Initialize ── */
+      renderDivisions("all");
+      renderArchitecture();
+      animateCounters();
+
+    })();
+  </script>
+
+</body>
+</html>
