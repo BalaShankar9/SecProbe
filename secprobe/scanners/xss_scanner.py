@@ -131,6 +131,10 @@ class XSSScanner(SmartScanner):
         )
 
         test_urls = self._build_test_urls(url)
+        # Merge in discovered endpoints from attack surface
+        for u in self._get_injectable_urls():
+            if u not in test_urls:
+                test_urls.append(u)
         if self.context:
             for u in self.context.get_injection_urls():
                 if u not in test_urls:
@@ -559,6 +563,43 @@ class XSSScanner(SmartScanner):
                 )
                 print_finding(sev, f"SSTI: {expression} → {expected} ({result.confidence.name})")
                 return  # One confirmed SSTI is enough
+
+    def _get_injectable_urls(self) -> list[str]:
+        """Get all injectable URLs from attack surface + root target."""
+        urls = set()
+        if self.context and hasattr(self.context, 'attack_surface') and self.context.attack_surface:
+            for ep in self.context.attack_surface.endpoints:
+                if ep.params:
+                    param_str = "&".join(f"{k}={v}" for k, v in ep.params.items())
+                    urls.add(f"{ep.url}?{param_str}" if param_str else ep.url)
+                else:
+                    urls.add(ep.url)
+            if hasattr(self.context, 'get_injection_urls'):
+                try:
+                    urls.update(self.context.get_injection_urls())
+                except Exception:
+                    pass
+        urls.add(self.config.target)
+        return list(urls)
+
+    def _check_reflection(self, payload: str, response_text: str) -> bool:
+        """Check if a payload is reflected in the response (raw or HTML-encoded)."""
+        if not payload or not response_text:
+            return False
+        # Check raw reflection
+        if payload in response_text:
+            return True
+        # Check HTML-encoded reflection
+        import html
+        encoded = html.escape(payload)
+        if encoded in response_text:
+            return True
+        # Check URL-encoded reflection
+        from urllib.parse import quote
+        url_encoded = quote(payload)
+        if url_encoded in response_text:
+            return True
+        return False
 
     def _build_test_urls(self, url):
         from urllib.parse import urlparse
