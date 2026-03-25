@@ -379,6 +379,42 @@ class ScanSession:
             if self._cancelled:
                 return self._finalize()
 
+            # ── ENHANCED DISCOVERY: JS analysis + API brute-force ──
+            try:
+                from secprobe.core.discovery_engine import DiscoveryEngine, DiscoveryConfig
+                import asyncio
+                discovery_config = DiscoveryConfig(
+                    target=self.config.target,
+                    enable_html_crawl=False,  # Already crawled above
+                    enable_js_analysis=True,
+                    enable_api_brute=True,
+                    enable_browser=False,
+                    crawl_depth=getattr(self.config, 'crawl_depth', 3),
+                    max_api_probes=200,  # Conservative for session
+                )
+                engine = DiscoveryEngine(discovery_config)
+                http_client = self.context.http_client
+                discovered = asyncio.run(engine.discover(http_client))
+
+                # Merge with existing attack surface
+                if self.context and hasattr(self.context, 'attack_surface') and self.context.attack_surface:
+                    self.context.attack_surface.urls.update(discovered.urls)
+                    for ep in discovered.endpoints:
+                        key = f"{ep.method}:{ep.url}"
+                        existing_keys = {f"{e.method}:{e.url}" for e in self.context.attack_surface.endpoints}
+                        if key not in existing_keys:
+                            self.context.attack_surface.endpoints.append(ep)
+                    self.context.attack_surface.parameters.update(discovered.parameters)
+                elif self.context:
+                    self.context.attack_surface = discovered
+
+                log.info("Discovery engine: +%d URLs, +%d endpoints", len(discovered.urls), len(discovered.endpoints))
+            except Exception:
+                log.warning("Discovery engine failed, continuing with existing surface", exc_info=True)
+
+            if self._cancelled:
+                return self._finalize()
+
             # ── ACTIVE SCAN PHASE ──
             active = [s for s in scanners_to_run if s in self.ACTIVE_SCANNERS]
             if active:

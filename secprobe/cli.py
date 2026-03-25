@@ -660,6 +660,12 @@ def main():
     if args.user_agent:
         config.user_agent = args.user_agent
 
+    # Auto-enable crawl/discovery for injection scanners
+    injection_types = {"sqli", "xss", "ssti", "cmdi", "lfi", "xxe", "nosql", "ldap", "xpath", "crlf", "hpp", "ssrf"}
+    if config.scan_types and any(s in injection_types for s in config.scan_types):
+        if not config.crawl:
+            config.crawl = True
+
     if args.output != "console" and not args.file:
         ext_map = {"json": "json", "html": "html", "sarif": "sarif.json", "junit": "xml"}
         ext = ext_map.get(args.output, "json")
