@@ -488,7 +488,7 @@ class XSSScanner(SmartScanner):
         script_analysis = self.analyze_scripts(html)
         if script_analysis:
             for script in script_analysis:
-                content = script.get("content", "")
+                content = getattr(script, "content", "") or ""
                 # Check for dangerous patterns in script blocks
                 if any(re.search(p, content) for p in DOM_SINKS):
                     if "inline" not in [s.split(r'\(')[0].replace('\\', '')

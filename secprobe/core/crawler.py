@@ -152,9 +152,14 @@ class Crawler:
         if parsed.scheme not in ("http", "https"):
             return False
         # Must be same domain or subdomain
-        if not parsed.netloc.endswith(self.base_domain.split(":")[-1].split(".")[-2] + "." +
-                                       self.base_domain.split(":")[-1].split(".")[-1]):
-            # Simplified: just check if it's the same netloc
+        base_host_parts = self.base_domain.split(":")[-1].split(".")
+        if len(base_host_parts) >= 2:
+            suffix = base_host_parts[-2] + "." + base_host_parts[-1]
+            if not parsed.netloc.endswith(suffix):
+                if parsed.netloc != self.base_domain:
+                    return False
+        else:
+            # Single-label host (e.g., localhost) or IP without dots — exact match only
             if parsed.netloc != self.base_domain:
                 return False
         if self.scope_regex:
