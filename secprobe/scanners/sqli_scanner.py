@@ -634,7 +634,20 @@ class SQLiScanner(SmartScanner):
             parsed = urlparse(union_url)
             params = parse_qs(parsed.query, keep_blank_values=True)
             if not params:
-                continue
+                # For endpoints without explicit params, try common param names
+                common_params = ["q", "search", "query", "id", "s", "keyword", "term", "name"]
+                for cp in common_params:
+                    test_base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{cp}=test"
+                    try:
+                        resp = self.http_client.get(test_base, timeout=5)
+                        if resp.status_code == 200 and len(resp.text) > 50:
+                            params = {cp: ["test"]}
+                            union_url = test_base
+                            break
+                    except Exception:
+                        continue
+                if not params:
+                    continue
             for param_name in params:
                 point_key = (parsed.path, param_name)
                 if point_key in found_vulns:

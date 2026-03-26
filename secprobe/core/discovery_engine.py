@@ -107,6 +107,37 @@ class DiscoveryEngine:
 
         return self.merge_surfaces(surfaces)
 
+    def discover_sync(self, http_client) -> AttackSurface:
+        """Synchronous version of discover() — runs layers A, B, C (no browser)."""
+        surfaces: list[AttackSurface] = []
+
+        if self.config.enable_html_crawl:
+            try:
+                crawler = Crawler(http_client, self.config.target, max_depth=self.config.crawl_depth)
+                surface = crawler.crawl()
+                surfaces.append(surface)
+                log.info("Layer A: %d URLs, %d endpoints", len(surface.urls), len(surface.endpoints))
+            except Exception as e:
+                log.warning("Layer A failed: %s", e)
+
+        if self.config.enable_js_analysis:
+            try:
+                surface = self._run_js_analysis(http_client)
+                surfaces.append(surface)
+                log.info("Layer B: %d endpoints", len(surface.endpoints))
+            except Exception as e:
+                log.warning("Layer B failed: %s", e)
+
+        if self.config.enable_api_brute:
+            try:
+                surface = self._run_api_brute(http_client)
+                surfaces.append(surface)
+                log.info("Layer C: %d endpoints", len(surface.endpoints))
+            except Exception as e:
+                log.warning("Layer C failed: %s", e)
+
+        return self.merge_surfaces(surfaces)
+
     def _run_js_analysis(self, http_client) -> AttackSurface:
         """Layer B: Fetch root page + JS files, extract endpoints with JSEndpointExtractor."""
         extractor = JSEndpointExtractor()

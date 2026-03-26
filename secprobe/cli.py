@@ -868,6 +868,41 @@ def main():
         except Exception as e:
             print_status(f"Safe mode setup error: {e}", "warning")
 
+    # ── Enhanced discovery: JS analysis + API brute-force ────────────
+    injection_types = {"sqli", "xss", "ssti", "cmdi", "lfi", "xxe", "nosql",
+                       "ldap", "xpath", "crlf", "hpp", "ssrf"}
+    if config.scan_types and any(s in injection_types for s in config.scan_types):
+        try:
+            from secprobe.core.discovery_engine import DiscoveryEngine, DiscoveryConfig
+            discovery_config = DiscoveryConfig(
+                target=normalize_url(config.target),
+                enable_html_crawl=False,  # Already crawled above
+                enable_js_analysis=True,
+                enable_api_brute=True,
+                enable_browser=False,
+                crawl_depth=getattr(config, 'crawl_depth', 3),
+                max_api_probes=200,
+            )
+            engine = DiscoveryEngine(discovery_config)
+            discovered = engine.discover_sync(context.http_client)
+            if context.attack_surface:
+                context.attack_surface.urls.update(discovered.urls)
+                for ep in discovered.endpoints:
+                    key = f"{ep.method}:{ep.url}"
+                    existing = {f"{e.method}:{e.url}" for e in context.attack_surface.endpoints}
+                    if key not in existing:
+                        context.attack_surface.endpoints.append(ep)
+                context.attack_surface.parameters.update(discovered.parameters)
+            else:
+                context.attack_surface = discovered
+            print_status(
+                f"Discovery: +{len(discovered.urls)} URLs, +{len(discovered.endpoints)} endpoints "
+                f"(JS analysis + API probing)",
+                "success",
+            )
+        except Exception as e:
+            print_status(f"Discovery engine: {e}", "warning")
+
     print_section("Scan Configuration")
     print_status(f"Target: {config.target}", "info")
     print_status(f"Scanners: {len(scanner_classes)} modules selected", "info")

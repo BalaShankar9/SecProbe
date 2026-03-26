@@ -382,7 +382,6 @@ class ScanSession:
             # ── ENHANCED DISCOVERY: JS analysis + API brute-force ──
             try:
                 from secprobe.core.discovery_engine import DiscoveryEngine, DiscoveryConfig
-                import asyncio
                 discovery_config = DiscoveryConfig(
                     target=self.config.target,
                     enable_html_crawl=False,  # Already crawled above
@@ -394,7 +393,7 @@ class ScanSession:
                 )
                 engine = DiscoveryEngine(discovery_config)
                 http_client = self.context.http_client
-                discovered = asyncio.run(engine.discover(http_client))
+                discovered = engine.discover_sync(http_client)
 
                 # Merge with existing attack surface
                 if self.context and hasattr(self.context, 'attack_surface') and self.context.attack_surface:
