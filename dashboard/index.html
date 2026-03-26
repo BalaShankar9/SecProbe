@@ -807,6 +807,181 @@
 
     .fade-up:nth-child(2) { animation-delay: 0.1s; }
     .fade-up:nth-child(3) { animation-delay: 0.2s; }
+
+    /* ── Scan Launcher ── */
+    .scan-form {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      max-width: 640px;
+    }
+
+    .scan-form label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      font-family: var(--font-mono);
+    }
+
+    .scan-form input,
+    .scan-form select {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 14px;
+      margin-bottom: 20px;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+
+    .scan-form input:focus,
+    .scan-form select:focus {
+      border-color: var(--accent);
+    }
+
+    .scan-form button {
+      padding: 12px 32px;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+
+    .scan-form button:hover { background: var(--accent-dim); }
+    .scan-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .scan-form .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* ── Scan Results Table ── */
+    .scans-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .scans-table th,
+    .scans-table td {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .scans-table th {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      background: var(--bg-secondary);
+    }
+
+    .scans-table td { color: var(--text-secondary); }
+
+    .scans-table .target-cell {
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .status-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 100px;
+      letter-spacing: 0.05em;
+    }
+
+    .status-queued { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .status-running { background: rgba(234,179,8,0.15); color: var(--yellow); }
+    .status-completed { background: rgba(34,197,94,0.15); color: var(--green); }
+    .status-failed { background: rgba(239,68,68,0.15); color: var(--red); }
+
+    .no-scans {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-muted);
+      font-size: 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+    }
+
+    /* ── Intelligence Panel ── */
+    .intel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .intel-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+    }
+
+    .intel-card-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 16px;
+    }
+
+    .intel-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 13px;
+    }
+
+    .intel-row:last-child { border-bottom: none; }
+
+    .intel-vuln { color: var(--text-secondary); }
+
+    .intel-prob {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .intel-empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    @media (max-width: 768px) {
+      .scan-form .form-row { grid-template-columns: 1fr; }
+      .intel-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -816,10 +991,12 @@
     <div class="nav-inner">
       <a href="#" class="nav-logo">Sec<span>Probe</span></a>
       <ul class="nav-links" id="navLinks">
+        <li><a href="#scan-launcher">New Scan</a></li>
+        <li><a href="#recent-scans">Scans</a></li>
+        <li><a href="#intelligence">Intelligence</a></li>
         <li><a href="#divisions">Divisions</a></li>
         <li><a href="#architecture">Architecture</a></li>
         <li><a href="#modes">Modes</a></li>
-        <li><a href="#quickstart">Quick Start</a></li>
         <li><a href="#api">API</a></li>
       </ul>
       <button class="nav-hamburger" id="navToggle" aria-label="Toggle navigation">
@@ -1042,6 +1219,95 @@ results.export(<span class="flag">"report.html"</span>)</pre>
           <span class="api-method get">GET</span>
           <div class="api-endpoint">/api/health</div>
           <div class="api-desc">Health check endpoint returning system status, uptime, and agent availability.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Scan Launcher -->
+  <section id="scan-launcher">
+    <div class="container">
+      <div class="section-label">Scan Management</div>
+      <h2 class="section-title">Launch New Scan</h2>
+      <p class="section-desc">Submit a target for security testing. Select the operational mode and stealth preset to match your engagement profile.</p>
+
+      <div class="scan-form" id="scanForm">
+        <label for="scanTarget">Target URL</label>
+        <input type="url" id="scanTarget" placeholder="https://target.example.com" required>
+
+        <div class="form-row">
+          <div>
+            <label for="scanMode">Mode</label>
+            <select id="scanMode">
+              <option value="recon">Recon — Passive Only</option>
+              <option value="audit" selected>Audit — Active Testing</option>
+              <option value="redteam">Red Team — Full Offensive</option>
+            </select>
+          </div>
+          <div>
+            <label for="scanStealth">Stealth Preset</label>
+            <select id="scanStealth">
+              <option value="normal">Normal</option>
+              <option value="ninja">Ninja</option>
+              <option value="ghost">Ghost</option>
+              <option value="shadow">Shadow</option>
+              <option value="blitz">Blitz</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="scanMaxReqs">Max Requests</label>
+        <input type="number" id="scanMaxReqs" value="10000" min="100" max="100000">
+
+        <button id="scanSubmitBtn" type="button">Launch Scan</button>
+        <div id="scanFeedback" style="margin-top:16px; font-size:13px; color:var(--green); font-family:var(--font-mono); display:none;"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recent Scans -->
+  <section id="recent-scans">
+    <div class="container">
+      <div class="section-label">Scan History</div>
+      <h2 class="section-title">Recent Scans</h2>
+      <p class="section-desc">Track progress and review findings from your security scans.</p>
+
+      <div id="scansContainer">
+        <div class="no-scans" id="noScansMsg">No scans yet. Launch your first scan above.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Intelligence -->
+  <section id="intelligence">
+    <div class="container">
+      <div class="section-label">Machine Learning</div>
+      <h2 class="section-title">Intelligence Patterns</h2>
+      <p class="section-desc">Learned vulnerability patterns and scan priorities from the SecProbe intelligence engine.</p>
+
+      <div class="intel-grid">
+        <div class="intel-card">
+          <div class="intel-card-title">Scan Priorities</div>
+          <div id="intelPriorities">
+            <div class="intel-empty">Enter a technology stack to see learned priorities...</div>
+          </div>
+          <div style="margin-top:16px;">
+            <label style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:6px;display:block;">Tech Stack (comma-separated)</label>
+            <input type="text" id="intelTechInput" placeholder="e.g. react, mysql, nginx" style="width:100%;padding:8px 12px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);color:var(--text-primary);font-family:var(--font-mono);font-size:13px;">
+            <button id="intelFetchBtn" type="button" style="margin-top:8px;padding:8px 20px;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;font-family:var(--font-mono);font-size:12px;font-weight:600;cursor:pointer;">Fetch Priorities</button>
+          </div>
+        </div>
+
+        <div class="intel-card">
+          <div class="intel-card-title">Scan History Lookup</div>
+          <div id="intelHistory">
+            <div class="intel-empty">Enter a target to view scan history...</div>
+          </div>
+          <div style="margin-top:16px;">
+            <label style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:6px;display:block;">Target</label>
+            <input type="text" id="intelHistoryInput" placeholder="e.g. example.com" style="width:100%;padding:8px 12px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);color:var(--text-primary);font-family:var(--font-mono);font-size:13px;">
+            <button id="intelHistoryBtn" type="button" style="margin-top:8px;padding:8px 20px;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;font-family:var(--font-mono);font-size:12px;font-weight:600;cursor:pointer;">Lookup History</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1304,10 +1570,209 @@ results.export(<span class="flag">"report.html"</span>)</pre>
         });
       }
 
+      /* ── API Configuration ── */
+      var API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? "http://localhost:8000"
+        : "";  /* Same origin in production */
+
+      /* ── Scan Launcher ── */
+      var scanSubmitBtn = getEl("scanSubmitBtn");
+      var scanFeedback = getEl("scanFeedback");
+
+      if (scanSubmitBtn) {
+        scanSubmitBtn.addEventListener("click", function() {
+          var target = getEl("scanTarget").value.trim();
+          if (!target) {
+            scanFeedback.style.display = "block";
+            scanFeedback.style.color = "var(--red)";
+            scanFeedback.textContent = "Please enter a target URL.";
+            return;
+          }
+
+          scanSubmitBtn.disabled = true;
+          scanSubmitBtn.textContent = "Launching...";
+
+          var payload = {
+            target: target,
+            mode: getEl("scanMode").value,
+            stealth_preset: getEl("scanStealth").value,
+            max_requests: parseInt(getEl("scanMaxReqs").value, 10) || 10000
+          };
+
+          fetch(API_BASE + "/api/scans", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          })
+          .then(function(resp) { return resp.json(); })
+          .then(function(data) {
+            scanFeedback.style.display = "block";
+            scanFeedback.style.color = "var(--green)";
+            scanFeedback.textContent = "Scan queued: " + data.scan_id + " [" + data.status + "]";
+            scanSubmitBtn.disabled = false;
+            scanSubmitBtn.textContent = "Launch Scan";
+            refreshScans();
+          })
+          .catch(function(err) {
+            scanFeedback.style.display = "block";
+            scanFeedback.style.color = "var(--red)";
+            scanFeedback.textContent = "Error: " + err.message;
+            scanSubmitBtn.disabled = false;
+            scanSubmitBtn.textContent = "Launch Scan";
+          });
+        });
+      }
+
+      /* ── Recent Scans ── */
+      function refreshScans() {
+        fetch(API_BASE + "/api/scans")
+          .then(function(resp) { return resp.json(); })
+          .then(function(scans) {
+            var container = getEl("scansContainer");
+            if (!scans || scans.length === 0) {
+              container.textContent = "";
+              var msg = makeEl("div");
+              msg.className = "no-scans";
+              msg.textContent = "No scans yet. Launch your first scan above.";
+              container.appendChild(msg);
+              return;
+            }
+
+            container.textContent = "";
+            var table = makeEl("table");
+            table.className = "scans-table";
+
+            var thead = makeEl("thead");
+            var headerRow = makeEl("tr");
+            ["Scan ID", "Target", "Mode", "Status", "Findings", "Created"].forEach(function(h) {
+              var th = makeEl("th");
+              th.textContent = h;
+              headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            var tbody = makeEl("tbody");
+            scans.forEach(function(s) {
+              var tr = makeEl("tr");
+
+              var tdId = makeEl("td");
+              tdId.style.fontFamily = "var(--font-mono)";
+              tdId.style.fontSize = "12px";
+              tdId.textContent = s.scan_id;
+              tr.appendChild(tdId);
+
+              var tdTarget = makeEl("td");
+              tdTarget.className = "target-cell";
+              tdTarget.textContent = s.target;
+              tr.appendChild(tdTarget);
+
+              var tdMode = makeEl("td");
+              tdMode.appendChild(textEl("span", s.mode, "division-mode mode-" + s.mode));
+              tr.appendChild(tdMode);
+
+              var tdStatus = makeEl("td");
+              tdStatus.appendChild(textEl("span", s.status, "status-badge status-" + s.status));
+              tr.appendChild(tdStatus);
+
+              var tdFindings = makeEl("td");
+              tdFindings.style.fontFamily = "var(--font-mono)";
+              tdFindings.textContent = s.findings_count || 0;
+              tr.appendChild(tdFindings);
+
+              var tdCreated = makeEl("td");
+              tdCreated.style.fontSize = "12px";
+              tdCreated.textContent = s.created_at ? s.created_at.replace("T", " ").slice(0, 19) : "-";
+              tr.appendChild(tdCreated);
+
+              tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            container.appendChild(table);
+          })
+          .catch(function() { /* API unavailable, keep current state */ });
+      }
+
+      /* ── Intelligence: Priorities ── */
+      var intelFetchBtn = getEl("intelFetchBtn");
+      if (intelFetchBtn) {
+        intelFetchBtn.addEventListener("click", function() {
+          var tech = getEl("intelTechInput").value.trim();
+          fetch(API_BASE + "/api/intelligence/priorities?tech=" + encodeURIComponent(tech))
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+              var container = getEl("intelPriorities");
+              container.textContent = "";
+
+              if (data.priorities && data.priorities.length > 0) {
+                data.priorities.forEach(function(p) {
+                  var row = makeEl("div");
+                  row.className = "intel-row";
+                  row.appendChild(textEl("span", p.vuln_type, "intel-vuln"));
+                  row.appendChild(textEl("span", (p.probability * 100).toFixed(1) + "%", "intel-prob"));
+                  container.appendChild(row);
+                });
+              } else {
+                var empty = makeEl("div");
+                empty.className = "intel-empty";
+                empty.textContent = data.error ? "Error: " + data.error : "No priorities found for this tech stack.";
+                container.appendChild(empty);
+              }
+            })
+            .catch(function(err) {
+              var container = getEl("intelPriorities");
+              container.textContent = "";
+              var empty = makeEl("div");
+              empty.className = "intel-empty";
+              empty.textContent = "API unavailable: " + err.message;
+              container.appendChild(empty);
+            });
+        });
+      }
+
+      /* ── Intelligence: History ── */
+      var intelHistoryBtn = getEl("intelHistoryBtn");
+      if (intelHistoryBtn) {
+        intelHistoryBtn.addEventListener("click", function() {
+          var target = getEl("intelHistoryInput").value.trim();
+          fetch(API_BASE + "/api/intelligence/history?target=" + encodeURIComponent(target))
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+              var container = getEl("intelHistory");
+              container.textContent = "";
+
+              var keys = Object.keys(data);
+              if (keys.length > 0) {
+                keys.forEach(function(k) {
+                  var row = makeEl("div");
+                  row.className = "intel-row";
+                  row.appendChild(textEl("span", k, "intel-vuln"));
+                  row.appendChild(textEl("span", JSON.stringify(data[k]), "intel-prob"));
+                  container.appendChild(row);
+                });
+              } else {
+                var empty = makeEl("div");
+                empty.className = "intel-empty";
+                empty.textContent = "No history found for this target.";
+                container.appendChild(empty);
+              }
+            })
+            .catch(function(err) {
+              var container = getEl("intelHistory");
+              container.textContent = "";
+              var empty = makeEl("div");
+              empty.className = "intel-empty";
+              empty.textContent = "API unavailable: " + err.message;
+              container.appendChild(empty);
+            });
+        });
+      }
+
       /* ── Initialize ── */
       renderDivisions("all");
       renderArchitecture();
       animateCounters();
+      refreshScans();
 
     })();
   </script>

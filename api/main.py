@@ -579,6 +579,101 @@ async def contribute_intelligence(contribution: IntelligenceContribution):
     }
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# SaaS Scan Management (/api/scans) — Extended endpoints for dashboard
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class SaaSScanRequest(BaseModel):
+    target: str
+    mode: str = "audit"  # recon/audit/redteam
+    divisions: list[int] | None = None
+    stealth_preset: str | None = None  # ghost/ninja/shadow/blitz/normal
+    max_requests: int = 10000
+
+
+class SaaSScanStatus(BaseModel):
+    scan_id: str
+    target: str
+    mode: str
+    status: str  # queued/running/completed/failed
+    created_at: str
+    findings_count: int = 0
+    duration_seconds: float = 0.0
+
+
+# In-memory SaaS scan store (replace with Supabase in production)
+_saas_scans: dict[str, dict] = {}
+
+
+@app.post("/api/scans", response_model=SaaSScanStatus, tags=["SaaS Scans"])
+async def saas_create_scan(req: SaaSScanRequest):
+    """Queue a new security scan (SaaS dashboard endpoint)."""
+    scan_id = uuid.uuid4().hex[:12]
+    scan = {
+        "scan_id": scan_id,
+        "target": req.target,
+        "mode": req.mode,
+        "status": "queued",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "divisions": req.divisions,
+        "stealth_preset": req.stealth_preset,
+        "max_requests": req.max_requests,
+        "findings": [],
+        "findings_count": 0,
+        "duration_seconds": 0.0,
+    }
+    _saas_scans[scan_id] = scan
+    return SaaSScanStatus(**{k: scan[k] for k in SaaSScanStatus.model_fields})
+
+
+@app.get("/api/scans", response_model=list[SaaSScanStatus], tags=["SaaS Scans"])
+async def saas_list_scans():
+    """List all scans (SaaS dashboard endpoint)."""
+    return [
+        SaaSScanStatus(**{k: s[k] for k in SaaSScanStatus.model_fields})
+        for s in _saas_scans.values()
+    ]
+
+
+@app.get("/api/scans/{scan_id}", tags=["SaaS Scans"])
+async def saas_get_scan(scan_id: str):
+    """Get scan details including findings (SaaS dashboard endpoint)."""
+    if scan_id not in _saas_scans:
+        raise HTTPException(404, "Scan not found")
+    return _saas_scans[scan_id]
+
+
+@app.get("/api/intelligence/priorities", tags=["SaaS Intelligence"])
+async def get_priorities(tech: str = ""):
+    """Get scan priorities based on learned patterns."""
+    try:
+        from secprobe.intelligence.learning import ScanLearner
+        learner = ScanLearner()
+        techs = [t.strip() for t in tech.split(",") if t.strip()] if tech else []
+        priorities = learner.get_scan_priorities(techs)
+        learner.close()
+        return {
+            "tech_stack": techs,
+            "priorities": [{"vuln_type": v, "probability": p} for v, p in priorities],
+        }
+    except Exception as e:
+        return {"tech_stack": [], "priorities": [], "error": str(e)}
+
+
+@app.get("/api/intelligence/history", tags=["SaaS Intelligence"])
+async def get_scan_history(target: str = ""):
+    """Get scan history for a target."""
+    try:
+        from secprobe.intelligence.learning import ScanLearner
+        learner = ScanLearner()
+        history = learner.get_target_history(target)
+        learner.close()
+        return history
+    except Exception:
+        return {}
+
+
 # ─── Entrypoint ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
