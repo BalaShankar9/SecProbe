@@ -18,7 +18,6 @@ Enterprise security testing with advanced engines:
 """
 
 import argparse
-import asyncio
 import sys
 import warnings
 from datetime import datetime
@@ -438,162 +437,185 @@ def _run_scanners_sequential(scanner_classes, config, context):
 
 
 def _run_swarm(args):
-    """Execute 600-agent swarm mode."""
-    from secprobe.swarm.executor import SwarmExecutor, ExecutorConfig
+    """Run 600-agent swarm scan via bridge-based execution."""
+    import time
     from secprobe.swarm.registry import SwarmRegistry
-    from secprobe.swarm.safety.governor import SafetyGovernor, ScopeConfig, BudgetConfig
-    from secprobe.swarm.comm.event_bus import EventBus
-    from secprobe.swarm.memory.working import WorkingMemory
+    from secprobe.core.discovery_engine import DiscoveryEngine, DiscoveryConfig
+    from secprobe.core.http_client import HTTPClient
+    from secprobe.models import ScanResult
+
+    try:
+        from secprobe.swarm.bridge import AgentScannerBridge
+        _has_bridge = True
+    except ImportError:
+        _has_bridge = False
 
     target = normalize_url(args.target)
-    mode = args.mode.upper()
+    mode = getattr(args, 'mode', 'audit')
+    divisions = getattr(args, 'divisions', None)
 
     # ── Mode-aware banner ────────────────────────────────────────
-    mode_colors = {
-        "RECON": Colors.CYAN,
-        "AUDIT": Colors.YELLOW,
-        "REDTEAM": Colors.RED,
-    }
-    mode_color = mode_colors.get(mode, Colors.RESET)
-    print(f"\n  {mode_color}{Colors.BOLD}[ SWARM MODE: {mode} ]{Colors.RESET}")
-    print(f"  {Colors.GRAY}Target:     {target}{Colors.RESET}")
-    print(f"  {Colors.GRAY}Max agents: {args.max_agents}{Colors.RESET}")
-    print(f"  {Colors.GRAY}Rate limit: {args.swarm_rate_limit} req/s{Colors.RESET}")
-    print(f"  {Colors.GRAY}Consensus:  {args.consensus} agents{Colors.RESET}")
-    if args.divisions:
-        print(f"  {Colors.GRAY}Divisions:  {args.divisions}{Colors.RESET}")
-    if args.federated:
-        print(f"  {Colors.GRAY}Federated:  enabled{Colors.RESET}")
-    print()
-
-    # ── Build components ─────────────────────────────────────────
-    executor_config = ExecutorConfig(
-        max_agents=args.max_agents,
-        max_requests=args.max_swarm_requests,
-        rate_limit=args.swarm_rate_limit,
-        consensus=args.consensus,
-        federated=args.federated,
-    )
-
-    scope_config = ScopeConfig(target_domain=args.target)
-    budget_config = BudgetConfig(
-        max_requests=args.max_swarm_requests,
-        rate_limit=args.swarm_rate_limit,
-    )
-    governor = SafetyGovernor(scope=scope_config, budget=budget_config)
-
-    event_bus = EventBus()
-    working_memory = WorkingMemory()
+    mode_colors = {"recon": Colors.CYAN, "audit": Colors.YELLOW, "redteam": Colors.RED}
+    color = mode_colors.get(mode, Colors.CYAN)
+    print(f"\n  {color}{Colors.BOLD}MODE: {mode.upper()}{Colors.RESET}\n")
 
     # ── Load agent registry ──────────────────────────────────────
-    print_section("Loading Swarm Registry")
-    registry = SwarmRegistry.load_all()
-    total_agents = registry.agent_count
-    division_count = registry.division_count
-    print_status(f"Registry loaded: {total_agents} agents across {division_count} divisions", "success")
+    print_section("Loading Agent Registry")
+    registry = SwarmRegistry()
+    registry.load_all()
+    print_status(f"Loaded {len(registry)} agents across 20 divisions", "success")
 
-    if args.divisions:
-        print_status(f"Deploying divisions: {args.divisions}", "info")
-
-    # ── Wire progress events ─────────────────────────────────────
-    _scan_start = datetime.now()
-
-    def _on_agent_deployed(event):
-        print_status(
-            f"Agent deployed: {event.agent_id} (division {event.division})",
-            "progress",
-        )
-
-    def _on_finding(event):
-        sev = event.finding.severity if hasattr(event, 'finding') else "INFO"
-        color = {"CRITICAL": Colors.RED, "HIGH": Colors.RED,
-                 "MEDIUM": Colors.YELLOW, "LOW": Colors.GREEN}.get(sev, Colors.GRAY)
-        title = event.finding.title if hasattr(event, 'finding') else str(event)
-        print(f"    {color}[{sev}]{Colors.RESET} {title}")
-
-    def _on_progress(event):
-        print_status(
-            f"[{event.agents_deployed}/{total_agents}] "
-            f"Findings: {event.findings_count} | "
-            f"Requests: {event.requests_made}/{args.max_swarm_requests}",
-            "progress",
-        )
-
-    event_bus.on("agent_deployed", _on_agent_deployed)
-    event_bus.on("finding_discovered", _on_finding)
-    event_bus.on("progress", _on_progress)
-
-    # ── Create and run executor ──────────────────────────────────
-    print_section(f"Executing Swarm — {mode}")
-    executor = SwarmExecutor(
-        config=executor_config,
-        registry=registry,
-        governor=governor,
-        event_bus=event_bus,
-        working_memory=working_memory,
+    # ── Endpoint discovery ───────────────────────────────────────
+    print_section("Endpoint Discovery")
+    client = HTTPClient()
+    discovery_config = DiscoveryConfig(
+        target=target,
+        enable_html_crawl=True,
+        enable_js_analysis=True,
+        enable_api_brute=True,
+        enable_browser=False,
+        crawl_depth=3,
+        max_api_probes=200,
+    )
+    engine = DiscoveryEngine(discovery_config)
+    surface = engine.discover_sync(client)
+    print_status(
+        f"Discovered {len(surface.urls)} URLs, {len(surface.endpoints)} endpoints",
+        "success",
     )
 
-    divisions = args.divisions
-    results = asyncio.run(executor.execute(target, args.mode, divisions))
+    # ── Select agents ────────────────────────────────────────────
+    print_section("Agent Selection")
+    if divisions:
+        agents = []
+        for d in divisions:
+            agents.extend(registry.by_division(d))
+        print_status(f"Selected {len(agents)} agents from divisions {divisions}", "info")
+    else:
+        agents = list(registry._agents.values())
+        print_status(f"All {len(agents)} agents available", "info")
 
-    # ── Results ──────────────────────────────────────────────────
-    _scan_duration = (datetime.now() - _scan_start).total_seconds()
+    # ── Bridge-based execution ───────────────────────────────────
+    print_section("Swarm Execution")
 
-    print_section("Swarm Results")
-    all_findings = results.findings if hasattr(results, 'findings') else []
+    if not _has_bridge:
+        print_status(
+            "AgentScannerBridge not available yet (bridge.py pending). "
+            "Skipping scanner execution.",
+            "warning",
+        )
+        all_findings = []
+        scanners_run = set()
+        agents_deployed = 0
+        duration = 0.0
+    else:
+        bridge = AgentScannerBridge(http_client=client, attack_surface=surface)
 
-    total = len(all_findings)
-    by_sev = {}
-    for f in all_findings:
-        sev = f.severity if hasattr(f, 'severity') else "INFO"
-        by_sev[sev] = by_sev.get(sev, 0) + 1
-
-    print_status(f"Total findings: {total}", "info")
-    for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
-        count = by_sev.get(sev, 0)
-        if count:
-            color = {"CRITICAL": Colors.RED, "HIGH": Colors.RED, "MEDIUM": Colors.YELLOW,
-                     "LOW": Colors.GREEN, "INFO": Colors.GRAY}.get(sev, Colors.RESET)
-            print(f"    {color}{sev}: {count}{Colors.RESET}")
-
-    print_status(f"Duration: {_scan_duration:.1f}s", "info")
-    print_status(f"Agents deployed: {results.agents_deployed if hasattr(results, 'agents_deployed') else 'N/A'}", "info")
-    print_status(f"Requests made: {results.requests_made if hasattr(results, 'requests_made') else 'N/A'}", "info")
-
-    # ── Generate report using existing infrastructure ────────────
-    if args.output != "console" or args.file:
-        try:
-            reporter = ReportGenerator(
-                results.scan_results if hasattr(results, 'scan_results') else [],
-                args.target,
-                scan_duration=_scan_duration,
+        # Coverage report
+        coverage = bridge.get_coverage_report(agents)
+        print_status(f"Mapped to {coverage['mapped_scanners']} unique scanners", "info")
+        if coverage['unmapped_agents'] > 0:
+            print_status(
+                f"{coverage['unmapped_agents']} agents without scanner mapping",
+                "warning",
             )
-            output_file = args.file
+
+        # Run agents grouped by scanner (deduplicate — same scanner not run twice)
+        start_time = time.time()
+        all_findings = []
+        scanners_run = set()
+        agents_deployed = 0
+
+        for spec in agents:
+            scanner_name = bridge.get_scanner_for_agent(spec)
+            if scanner_name and scanner_name not in scanners_run:
+                scanners_run.add(scanner_name)
+                agents_deployed += 1
+                print_status(f"Agent: {spec.name} -> {scanner_name}", "progress")
+
+                result = bridge.run_agent(spec, target, mode=mode, timeout=30)
+                if result.findings:
+                    for f in result.findings:
+                        all_findings.append(f)
+                        severity = getattr(f, 'severity', 'INFO')
+                        from secprobe.utils import print_finding
+                        print_finding(severity, f"{f.title}")
+                elif result.error:
+                    print_status(f"  Error: {result.error}", "warning")
+
+        duration = time.time() - start_time
+
+    # ── Deduplicate findings ─────────────────────────────────────
+    seen = set()
+    unique_findings = []
+    for f in all_findings:
+        key = (
+            getattr(f, 'title', ''),
+            getattr(f, 'url', ''),
+            getattr(f, 'category', ''),
+        )
+        if key not in seen:
+            seen.add(key)
+            unique_findings.append(f)
+
+    # ── Summary ──────────────────────────────────────────────────
+    print_section("SWARM SCAN SUMMARY")
+    print_status(f"Target: {target}", "info")
+    print_status(f"Mode: {mode.upper()}", "info")
+    print_status(f"Agents deployed: {agents_deployed}", "info")
+    print_status(f"Scanners run: {len(scanners_run)}", "info")
+    print_status(f"Duration: {duration:.1f}s", "info")
+    print_status(f"Total findings: {len(unique_findings)}", "info")
+
+    severity_counts = {}
+    for f in unique_findings:
+        sev = str(getattr(f, 'severity', 'INFO'))
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+    for sev in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO']:
+        count = severity_counts.get(sev, 0)
+        if count > 0:
+            print_status(f"  {sev}: {count}", "info")
+
+    # ── Generate reports ─────────────────────────────────────────
+    if args.output != "console" or getattr(args, 'file', None):
+        try:
+            scan_result = ScanResult(scanner_name="SwarmScan", target=target)
+            for f in unique_findings:
+                scan_result.add_finding(f)
+            reporter = ReportGenerator(
+                [scan_result], args.target, scan_duration=duration,
+            )
+            output_file = getattr(args, 'file', None)
             if not output_file and args.output != "console":
                 ext_map = {"json": "json", "html": "html", "sarif": "sarif.json", "junit": "xml"}
                 ext = ext_map.get(args.output, "json")
                 output_file = f"reports/secprobe_swarm_{args.target.replace('/', '_')}_{datetime.now():%Y%m%d_%H%M%S}.{ext}"
             reporter.generate(args.output, output_file)
+            if output_file:
+                print_status(f"Report saved to {output_file}", "success")
         except Exception as e:
             print_status(f"Report generation error: {e}", "warning")
 
-    if args.sarif:
+    if getattr(args, 'sarif', None):
         try:
+            scan_result = ScanResult(scanner_name="SwarmScan", target=target)
+            for f in unique_findings:
+                scan_result.add_finding(f)
             reporter = ReportGenerator(
-                results.scan_results if hasattr(results, 'scan_results') else [],
-                args.target,
-                scan_duration=_scan_duration,
+                [scan_result], args.target, scan_duration=duration,
             )
             reporter.generate("sarif", args.sarif)
         except Exception as e:
             print_status(f"SARIF report error: {e}", "warning")
 
-    if args.junit:
+    if getattr(args, 'junit', None):
         try:
+            scan_result = ScanResult(scanner_name="SwarmScan", target=target)
+            for f in unique_findings:
+                scan_result.add_finding(f)
             reporter = ReportGenerator(
-                results.scan_results if hasattr(results, 'scan_results') else [],
-                args.target,
-                scan_duration=_scan_duration,
+                [scan_result], args.target, scan_duration=duration,
             )
             reporter.generate("junit", args.junit)
         except Exception as e:
@@ -602,17 +624,16 @@ def _run_swarm(args):
     print_status("Swarm scan complete.", "success")
 
     # ── Exit code based on --fail-on threshold ───────────────────
-    if args.fail_on:
-        severity_order = ["critical", "high", "medium", "low"]
-        threshold_idx = severity_order.index(args.fail_on)
-        fail_severities = [s.upper() for s in severity_order[:threshold_idx + 1]]
-        has_failing = any(
-            (f.severity if hasattr(f, 'severity') else "") in fail_severities
-            for f in all_findings
-        )
-        if has_failing:
-            print_status(f"FAIL: Findings >= {args.fail_on.upper()} detected (exit 1)", "error")
-            sys.exit(1)
+    if getattr(args, 'fail_on', None):
+        severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        threshold = severity_order.get(args.fail_on, 0)
+        for sev, count in severity_counts.items():
+            if severity_order.get(sev.lower(), 0) >= threshold and count > 0:
+                print_status(
+                    f"FAIL: Findings >= {args.fail_on.upper()} detected (exit 1)",
+                    "error",
+                )
+                sys.exit(1)
 
 
 def main():

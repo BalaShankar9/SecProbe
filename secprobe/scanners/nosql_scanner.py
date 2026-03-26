@@ -103,7 +103,16 @@ class NoSQLScanner(SmartScanner):
             include_cookies=True,
             include_paths=False,
         )
-        points = discovery.discover(url, response=baseline)
+
+        # Gather test URLs from attack surface
+        test_urls = [url]
+        for injectable_url in self._get_injectable_urls():
+            if injectable_url not in test_urls:
+                test_urls.append(injectable_url)
+
+        points = []
+        for test_url in test_urls:
+            points.extend(discovery.discover(test_url, response=baseline))
         query_points = [p for p in points if p.type == InsertionType.QUERY_PARAM]
 
         # Profile endpoint for baseline
@@ -436,6 +445,24 @@ class NoSQLScanner(SmartScanner):
         if oob_count:
             print_status(f"Sent {oob_count} OOB NoSQL payloads", "progress")
             self.oob_collect_findings(wait_seconds=10)
+
+    def _get_injectable_urls(self) -> list[str]:
+        """Get all injectable URLs from attack surface + root target."""
+        urls = set()
+        if self.context and hasattr(self.context, 'attack_surface') and self.context.attack_surface:
+            for ep in self.context.attack_surface.endpoints:
+                if ep.params:
+                    param_str = "&".join(f"{k}={v}" for k, v in ep.params.items())
+                    urls.add(f"{ep.url}?{param_str}" if param_str else ep.url)
+                else:
+                    urls.add(ep.url)
+            if hasattr(self.context, 'get_injection_urls'):
+                try:
+                    urls.update(self.context.get_injection_urls())
+                except Exception:
+                    pass
+        urls.add(self.config.target)
+        return list(urls)
 
     # ── Helpers ───────────────────────────────────────────────────────
     def _build_operator_url(self, url, param_name, suffix):

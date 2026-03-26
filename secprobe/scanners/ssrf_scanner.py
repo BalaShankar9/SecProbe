@@ -102,6 +102,10 @@ class SSRFScanner(SmartScanner):
                 if u not in test_urls:
                     test_urls.append(u)
 
+        for injectable_url in self._get_injectable_urls():
+            if injectable_url not in test_urls:
+                test_urls.append(injectable_url)
+
         # If no params found, create synthetic URL-related params
         if not test_urls:
             test_urls = [f"{url}?{p}=https://example.com" for p in URL_PARAM_NAMES[:10]]
@@ -364,6 +368,24 @@ class SSRFScanner(SmartScanner):
                 ),
                 category="Server-Side Request Forgery",
             )
+
+    def _get_injectable_urls(self) -> list[str]:
+        """Get all injectable URLs from attack surface + root target."""
+        urls = set()
+        if self.context and hasattr(self.context, 'attack_surface') and self.context.attack_surface:
+            for ep in self.context.attack_surface.endpoints:
+                if ep.params:
+                    param_str = "&".join(f"{k}={v}" for k, v in ep.params.items())
+                    urls.add(f"{ep.url}?{param_str}" if param_str else ep.url)
+                else:
+                    urls.add(ep.url)
+            if hasattr(self.context, 'get_injection_urls'):
+                try:
+                    urls.update(self.context.get_injection_urls())
+                except Exception:
+                    pass
+        urls.add(self.config.target)
+        return list(urls)
 
     def _find_url_params(self, url):
         parsed = urlparse(url)
