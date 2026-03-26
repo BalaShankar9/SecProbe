@@ -242,6 +242,17 @@ class BaselineProfiler:
         for i in range(self.samples):
             try:
                 start = time.time()
+                # Quick check: skip profiling if first request returns auth error
+                if i == 0 and not params and not data:
+                    try:
+                        quick = self._client.get(url, allow_redirects=True, timeout=5)
+                        if quick.status_code in (401, 403, 405, 500, 502, 503):
+                            log.debug("Skipping profile for %s (status %d)", url[:60], quick.status_code)
+                            self._profiles[profile_key] = profile
+                            return profile
+                    except Exception:
+                        pass
+
                 if method.upper() == "POST" and data is not None:
                     # Vary one field with benign values
                     test_data = dict(data)
