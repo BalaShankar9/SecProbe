@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Proxy to Railway backend
-    const backendRes = await fetch(`${BACKEND_URL}/api/scans`, {
+    const backendRes = await fetch(`${BACKEND_URL}/scans`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const backendRes = await fetch(`${BACKEND_URL}/api/scans`, {
+    const backendRes = await fetch(`${BACKEND_URL}/scans`, {
       headers: { "Content-Type": "application/json" },
     });
 

@@ -27,28 +27,41 @@ export default function SeverityBarChart({ data }: Props) {
         <BarChart data={data} barCategoryGap="20%">
           <XAxis
             dataKey="name"
-            tick={{ fill: "#a1a1aa", fontSize: 12 }}
-            axisLine={{ stroke: "#3f3f46" }}
+            tick={{ fill: "#71717a", fontSize: 11, fontFamily: "monospace" }}
+            axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fill: "#a1a1aa", fontSize: 12 }}
+            tick={{ fill: "#52525b", fontSize: 11, fontFamily: "monospace" }}
             axisLine={false}
             tickLine={false}
             allowDecimals={false}
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: "#27272a",
-              border: "1px solid #3f3f46",
+              backgroundColor: "rgba(12, 12, 24, 0.95)",
+              border: "1px solid rgba(99, 102, 241, 0.2)",
               borderRadius: "8px",
-              color: "#f4f4f5",
-              fontSize: "13px",
+              color: "#e4e4e7",
+              fontSize: "12px",
+              fontFamily: "monospace",
+              backdropFilter: "blur(10px)",
+              boxShadow: "0 0 20px rgba(0, 0, 0, 0.5)",
             }}
+            cursor={{ fill: "rgba(99, 102, 241, 0.05)" }}
           />
-          <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+          <Bar
+            dataKey="count"
+            radius={[4, 4, 0, 0]}
+            animationBegin={0}
+            animationDuration={1200}
+          >
             {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
+              <Cell
+                key={`cell-${index}`}
+                fill={entry.color}
+                style={{ filter: `drop-shadow(0 0 8px ${entry.color}50)` }}
+              />
             ))}
           </Bar>
         </BarChart>

@@ -95,32 +95,32 @@ export const STEALTH_PRESETS = [
 export function severityColor(severity: string): string {
   switch (severity) {
     case "critical":
-      return "#ef4444";
+      return "#ff1744";
     case "high":
-      return "#f97316";
+      return "#ff9100";
     case "medium":
-      return "#f59e0b";
+      return "#ffea00";
     case "low":
-      return "#3b82f6";
+      return "#00e5ff";
     case "info":
-      return "#6b7280";
+      return "#69f0ae";
     default:
-      return "#6b7280";
+      return "#69f0ae";
   }
 }
 
 export function severityBadgeClass(severity: string): string {
   switch (severity) {
     case "critical":
-      return "bg-red-500/20 text-red-400 border-red-500/30";
+      return "bg-[#ff1744]/20 text-[#ff1744] border-[#ff1744]/30";
     case "high":
-      return "bg-orange-500/20 text-orange-400 border-orange-500/30";
+      return "bg-[#ff9100]/20 text-[#ff9100] border-[#ff9100]/30";
     case "medium":
-      return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+      return "bg-[#ffea00]/20 text-[#ffea00] border-[#ffea00]/30";
     case "low":
-      return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+      return "bg-[#00e5ff]/20 text-[#00e5ff] border-[#00e5ff]/30";
     case "info":
-      return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+      return "bg-[#69f0ae]/20 text-[#69f0ae] border-[#69f0ae]/30";
     default:
       return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
   }

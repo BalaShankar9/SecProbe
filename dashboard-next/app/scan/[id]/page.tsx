@@ -12,6 +12,9 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  FileJson,
+  FileText,
+  FileCode,
 } from "lucide-react";
 import SeverityBarChart from "@/components/SeverityBarChart";
 import { severityBadgeClass, severityColor } from "@/lib/api";
@@ -137,14 +140,22 @@ const demoScan = {
 
 const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 
+const severityLeftBorder: Record<string, string> = {
+  critical: "#ff1744",
+  high: "#ff9100",
+  medium: "#ffea00",
+  low: "#00e5ff",
+  info: "#69f0ae",
+};
+
 function StatusIcon({ status }: { status: string }) {
   switch (status) {
     case "complete":
-      return <CheckCircle2 className="h-5 w-5 text-green-400" />;
+      return <CheckCircle2 className="h-5 w-5 text-[#69f0ae]" style={{ filter: "drop-shadow(0 0 4px rgba(105, 240, 174, 0.4))" }} />;
     case "failed":
-      return <XCircle className="h-5 w-5 text-red-400" />;
+      return <XCircle className="h-5 w-5 text-[#ff1744]" style={{ filter: "drop-shadow(0 0 4px rgba(255, 23, 68, 0.4))" }} />;
     case "running":
-      return <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />;
+      return <Loader2 className="h-5 w-5 text-[#00e5ff] animate-spin" style={{ filter: "drop-shadow(0 0 4px rgba(0, 229, 255, 0.4))" }} />;
     default:
       return null;
   }
@@ -159,45 +170,67 @@ function FindingCard({
   isOpen: boolean;
   onToggle: () => void;
 }) {
+  const borderColor = severityLeftBorder[finding.severity] || "#69f0ae";
+
   return (
-    <div className="border border-zinc-700 rounded-lg overflow-hidden">
+    <div
+      className="rounded-lg overflow-hidden transition-all duration-300"
+      style={{
+        background: "rgba(12, 12, 24, 0.5)",
+        border: "1px solid rgba(255,255,255,0.05)",
+        borderLeft: `3px solid ${borderColor}`,
+        boxShadow: isOpen ? `inset 3px 0 10px ${borderColor}10` : "none",
+      }}
+    >
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/50 transition-colors text-left"
+        className="w-full flex items-center gap-3 px-4 py-3.5 transition-all duration-200 text-left hover:bg-white/[0.02]"
       >
         {isOpen ? (
-          <ChevronDown className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+          <ChevronDown className="h-4 w-4 text-zinc-600 flex-shrink-0" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+          <ChevronRight className="h-4 w-4 text-zinc-600 flex-shrink-0" />
         )}
         <span
-          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${severityBadgeClass(finding.severity)}`}
+          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${severityBadgeClass(finding.severity)}`}
         >
           {finding.severity.toUpperCase()}
         </span>
-        <span className="text-sm text-zinc-200 flex-1">{finding.title}</span>
+        <span className="text-sm text-zinc-300 flex-1">{finding.title}</span>
         {finding.cwe && (
-          <span className="text-xs text-zinc-500 font-mono hidden sm:inline">
+          <span className="text-[11px] text-zinc-600 font-mono hidden sm:inline">
             {finding.cwe}
           </span>
         )}
       </button>
 
-      {isOpen && (
-        <div className="px-4 pb-4 pt-1 border-t border-zinc-800 space-y-4">
+      <div
+        className="overflow-hidden transition-all duration-300"
+        style={{
+          maxHeight: isOpen ? "600px" : "0",
+          opacity: isOpen ? 1 : 0,
+        }}
+      >
+        <div className="px-4 pb-4 pt-1 border-t border-white/5 space-y-4">
           <div>
-            <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
+            <h4 className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider mb-1.5">
               Description
             </h4>
-            <p className="text-sm text-zinc-300">{finding.description}</p>
+            <p className="text-sm text-zinc-400 leading-relaxed">{finding.description}</p>
           </div>
 
           {finding.evidence && (
             <div>
-              <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
+              <h4 className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider mb-1.5">
                 Evidence
               </h4>
-              <pre className="text-xs text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-lg p-3 overflow-x-auto font-mono whitespace-pre-wrap">
+              <pre
+                className="text-xs text-zinc-400 rounded-lg p-4 overflow-x-auto font-mono whitespace-pre-wrap leading-relaxed"
+                style={{
+                  background: "rgba(0, 0, 0, 0.4)",
+                  border: "1px solid rgba(99, 102, 241, 0.1)",
+                }}
+              >
                 {finding.evidence}
               </pre>
             </div>
@@ -205,10 +238,10 @@ function FindingCard({
 
           {finding.recommendation && (
             <div>
-              <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">
+              <h4 className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider mb-1.5">
                 Recommendation
               </h4>
-              <p className="text-sm text-zinc-300">{finding.recommendation}</p>
+              <p className="text-sm text-zinc-400 leading-relaxed">{finding.recommendation}</p>
             </div>
           )}
 
@@ -218,24 +251,24 @@ function FindingCard({
                 href={`https://cwe.mitre.org/data/definitions/${finding.cwe.replace("CWE-", "")}.html`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover"
+                className="flex items-center gap-1 text-[11px] text-accent hover:text-accent-hover font-mono transition-colors"
               >
                 {finding.cwe} <ExternalLink className="h-3 w-3" />
               </a>
             )}
             {finding.agent && (
-              <span className="text-xs text-zinc-500">
-                Agent: {finding.agent}
+              <span className="text-[11px] text-zinc-600 font-mono">
+                Agent: <span className="text-zinc-500">{finding.agent}</span>
               </span>
             )}
             {finding.division && (
-              <span className="text-xs text-zinc-500">
-                Division: {finding.division}
+              <span className="text-[11px] text-zinc-600 font-mono">
+                Division: <span className="text-zinc-500">{finding.division}</span>
               </span>
             )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -328,7 +361,7 @@ export default function ScanResultsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <Link
           href="/"
-          className="flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="flex items-center gap-2 text-sm text-zinc-600 hover:text-zinc-300 transition-colors font-mono"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Dashboard
@@ -336,27 +369,35 @@ export default function ScanResultsPage() {
       </div>
 
       {/* Scan Status */}
-      <div className="card">
+      <div className="card scan-line-container">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
             <StatusIcon status={scan.status} />
             <div>
-              <h1 className="text-xl font-bold text-zinc-100">
+              <h1 className="text-xl font-bold text-white">
                 Scan {scan.id}
               </h1>
-              <p className="text-sm text-zinc-400 font-mono">{scan.target}</p>
+              <p className="text-sm text-zinc-500 font-mono">{scan.target}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-300">
-              Mode: {scan.mode}
-            </span>
-            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-300">
-              Duration: {durationStr}
-            </span>
-            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-300">
-              {scan.summary.total_findings} findings
-            </span>
+            {[
+              { label: "Mode", value: scan.mode },
+              { label: "Duration", value: durationStr },
+              { label: "Findings", value: scan.summary.total_findings.toString() },
+            ].map((tag) => (
+              <span
+                key={tag.label}
+                className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-mono"
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  color: "#a1a1aa",
+                }}
+              >
+                <span className="text-zinc-600 mr-1">{tag.label}:</span> {tag.value}
+              </span>
+            ))}
           </div>
         </div>
       </div>
@@ -364,54 +405,66 @@ export default function ScanResultsPage() {
       {/* Severity Chart + Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card">
-          <h2 className="text-lg font-semibold text-zinc-100 mb-4">
+          <h2 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">
             Severity Distribution
           </h2>
           <SeverityBarChart data={chartData} />
         </div>
         <div className="card space-y-4">
-          <h2 className="text-lg font-semibold text-zinc-100">Summary</h2>
+          <h2 className="text-sm font-semibold text-white uppercase tracking-wider">Summary</h2>
           <div className="grid grid-cols-2 gap-3">
             {chartData.map((item) => (
               <div
                 key={item.name}
-                className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700"
+                className="flex items-center justify-between p-3 rounded-lg transition-all duration-200 hover:scale-[1.02]"
+                style={{
+                  background: `${item.color}08`,
+                  border: `1px solid ${item.color}15`,
+                }}
               >
                 <div className="flex items-center gap-2">
                   <span
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: item.color }}
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: item.color, boxShadow: `0 0 6px ${item.color}40` }}
                   />
-                  <span className="text-sm text-zinc-400">{item.name}</span>
+                  <span className="text-xs text-zinc-500 font-mono">{item.name}</span>
                 </div>
-                <span className="text-lg font-bold text-zinc-100">
+                <span className="text-lg font-bold text-white font-mono">
                   {item.count}
                 </span>
               </div>
             ))}
           </div>
           {/* Export */}
-          <div className="pt-2">
-            <p className="text-xs text-zinc-500 mb-2">Export Report</p>
+          <div className="pt-3 border-t border-white/5">
+            <p className="text-[10px] text-zinc-600 mb-2.5 font-mono uppercase tracking-wider">Export Report</p>
             <div className="flex gap-2">
-              <button
-                onClick={() => exportData("json")}
-                className="btn-secondary text-xs flex items-center gap-1"
-              >
-                <Download className="h-3 w-3" /> JSON
-              </button>
-              <button
-                onClick={() => exportData("html")}
-                className="btn-secondary text-xs flex items-center gap-1"
-              >
-                <Download className="h-3 w-3" /> HTML
-              </button>
-              <button
-                onClick={() => exportData("sarif")}
-                className="btn-secondary text-xs flex items-center gap-1"
-              >
-                <Download className="h-3 w-3" /> SARIF
-              </button>
+              {[
+                { format: "json", icon: FileJson, label: "JSON" },
+                { format: "html", icon: FileText, label: "HTML" },
+                { format: "sarif", icon: FileCode, label: "SARIF" },
+              ].map((exp) => (
+                <button
+                  key={exp.format}
+                  onClick={() => exportData(exp.format)}
+                  className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-lg transition-all duration-200"
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    color: "#a1a1aa",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.target as HTMLElement).style.borderColor = "rgba(99, 102, 241, 0.3)";
+                    (e.target as HTMLElement).style.color = "#e4e4e7";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.target as HTMLElement).style.borderColor = "rgba(255,255,255,0.06)";
+                    (e.target as HTMLElement).style.color = "#a1a1aa";
+                  }}
+                >
+                  <Download className="h-3 w-3" /> {exp.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -420,18 +473,20 @@ export default function ScanResultsPage() {
       {/* Findings List */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-zinc-100">Findings</h2>
-          <div className="flex gap-2">
+          <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
+            Findings
+          </h2>
+          <div className="flex gap-3">
             <button
               onClick={expandAll}
-              className="text-xs text-accent hover:text-accent-hover"
+              className="text-[11px] text-accent hover:text-accent-hover font-mono transition-colors"
             >
               Expand all
             </button>
-            <span className="text-zinc-600">|</span>
+            <span className="text-zinc-800">|</span>
             <button
               onClick={collapseAll}
-              className="text-xs text-zinc-500 hover:text-zinc-300"
+              className="text-[11px] text-zinc-600 hover:text-zinc-400 font-mono transition-colors"
             >
               Collapse all
             </button>

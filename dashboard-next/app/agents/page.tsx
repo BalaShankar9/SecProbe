@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Search,
   Filter,
+  Activity,
 } from "lucide-react";
 
 interface Agent {
@@ -270,6 +271,12 @@ const attackTypes = [
 ];
 const modeFilters = ["All Modes", "recon", "audit", "redteam"];
 
+const modeColors: Record<string, { bg: string; text: string; border: string }> = {
+  recon: { bg: "rgba(0, 229, 255, 0.1)", text: "#00e5ff", border: "rgba(0, 229, 255, 0.2)" },
+  audit: { bg: "rgba(255, 234, 0, 0.1)", text: "#ffea00", border: "rgba(255, 234, 0, 0.2)" },
+  redteam: { bg: "rgba(255, 23, 68, 0.1)", text: "#ff1744", border: "rgba(255, 23, 68, 0.2)" },
+};
+
 export default function AgentsPage() {
   const [expandedDivision, setExpandedDivision] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -307,8 +314,8 @@ export default function AgentsPage() {
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-zinc-100">Agent Explorer</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-2xl font-bold text-white tracking-tight">Agent Explorer</h1>
+        <p className="text-sm text-zinc-600 mt-1 font-mono">
           {totalAgents} specialized agents across {divisions.length} divisions
         </p>
       </div>
@@ -316,8 +323,8 @@ export default function AgentsPage() {
       {/* Filters */}
       <div className="card">
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+          <div className="relative flex-1 group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-600 group-focus-within:text-neon-cyan transition-colors duration-300" />
             <input
               type="text"
               value={searchQuery}
@@ -328,7 +335,7 @@ export default function AgentsPage() {
           </div>
           <div className="flex gap-3">
             <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600 pointer-events-none" />
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
@@ -354,6 +361,43 @@ export default function AgentsPage() {
             </select>
           </div>
         </div>
+
+        {/* Active filter chips */}
+        {(typeFilter !== "All Types" || modeFilter !== "All Modes" || searchQuery) && (
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-white/5">
+            {searchQuery && (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono cursor-pointer transition-all duration-200"
+                style={{ background: "rgba(99, 102, 241, 0.1)", border: "1px solid rgba(99, 102, 241, 0.2)", color: "#a5b4fc" }}
+                onClick={() => setSearchQuery("")}
+              >
+                &quot;{searchQuery}&quot; x
+              </span>
+            )}
+            {typeFilter !== "All Types" && (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono cursor-pointer transition-all duration-200"
+                style={{ background: "rgba(0, 229, 255, 0.1)", border: "1px solid rgba(0, 229, 255, 0.2)", color: "#00e5ff" }}
+                onClick={() => setTypeFilter("All Types")}
+              >
+                {typeFilter} x
+              </span>
+            )}
+            {modeFilter !== "All Modes" && (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono cursor-pointer transition-all duration-200"
+                style={{
+                  background: modeColors[modeFilter]?.bg || "rgba(255,255,255,0.05)",
+                  border: `1px solid ${modeColors[modeFilter]?.border || "rgba(255,255,255,0.1)"}`,
+                  color: modeColors[modeFilter]?.text || "#a1a1aa",
+                }}
+                onClick={() => setModeFilter("All Modes")}
+              >
+                {modeFilter} x
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Division Grid */}
@@ -363,11 +407,15 @@ export default function AgentsPage() {
           return (
             <div
               key={division.name}
-              className={`card transition-all cursor-pointer ${
+              className={`card cursor-pointer transition-all duration-300 ${
                 isExpanded
                   ? "sm:col-span-2 lg:col-span-3 xl:col-span-4"
-                  : "hover:bg-card-hover"
+                  : ""
               }`}
+              style={{
+                borderColor: isExpanded ? `${division.color}30` : undefined,
+                boxShadow: isExpanded ? `0 0 30px ${division.color}10` : undefined,
+              }}
               onClick={() =>
                 setExpandedDivision(isExpanded ? null : division.name)
               }
@@ -375,73 +423,101 @@ export default function AgentsPage() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div
-                    className="p-2.5 rounded-lg"
-                    style={{ backgroundColor: `${division.color}15` }}
+                    className="p-2.5 rounded-lg transition-all duration-300"
+                    style={{ backgroundColor: `${division.color}12` }}
                   >
                     <Users
-                      className="h-5 w-5"
-                      style={{ color: division.color }}
+                      className="h-5 w-5 transition-all duration-300"
+                      style={{
+                        color: division.color,
+                        filter: `drop-shadow(0 0 4px ${division.color}40)`,
+                      }}
                     />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-zinc-100">
+                    <h3 className="font-semibold text-white text-sm">
                       {division.name}
                     </h3>
-                    <p className="text-xs text-zinc-500 mt-0.5">
+                    <p className="text-[11px] text-zinc-600 mt-0.5 font-mono">
                       {division.description}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono text-zinc-400">
+                  <span
+                    className="text-xs font-mono font-bold px-2 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: `${division.color}15`,
+                      color: division.color,
+                    }}
+                  >
                     {division.agentCount}
                   </span>
                   {isExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-zinc-500" />
+                    <ChevronDown className="h-4 w-4 text-zinc-600" />
                   ) : (
-                    <ChevronRight className="h-4 w-4 text-zinc-500" />
+                    <ChevronRight className="h-4 w-4 text-zinc-700" />
                   )}
                 </div>
               </div>
 
               {isExpanded && (
                 <div
-                  className="mt-4 pt-4 border-t border-zinc-700"
+                  className="mt-4 pt-4 border-t"
+                  style={{ borderColor: `${division.color}15` }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {division.agents.map((agent) => (
-                      <div
-                        key={agent.name}
-                        className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700 hover:border-zinc-600 transition-colors"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium text-zinc-200 font-mono">
-                            {agent.name}
-                          </span>
-                          <span
-                            className={`text-xs px-1.5 py-0.5 rounded ${
-                              agent.mode === "recon"
-                                ? "bg-blue-500/20 text-blue-400"
-                                : agent.mode === "audit"
-                                  ? "bg-yellow-500/20 text-yellow-400"
-                                  : "bg-red-500/20 text-red-400"
-                            }`}
-                          >
-                            {agent.mode}
-                          </span>
+                    {division.agents.map((agent) => {
+                      const mc = modeColors[agent.mode];
+                      return (
+                        <div
+                          key={agent.name}
+                          className="p-3.5 rounded-lg transition-all duration-200 hover:scale-[1.01]"
+                          style={{
+                            background: "rgba(255,255,255,0.02)",
+                            border: "1px solid rgba(255,255,255,0.05)",
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLElement).style.borderColor = `${division.color}30`;
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.05)";
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs font-medium text-zinc-300 font-mono">
+                              {agent.name}
+                            </span>
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                              style={{
+                                background: mc?.bg || "rgba(255,255,255,0.05)",
+                                color: mc?.text || "#a1a1aa",
+                                border: `1px solid ${mc?.border || "rgba(255,255,255,0.1)"}`,
+                              }}
+                            >
+                              {agent.mode}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-600 font-mono">{agent.type}</p>
+                          <p className="text-[11px] text-zinc-600 mt-1 flex items-center gap-1">
+                            <Activity className="h-2.5 w-2.5 text-[#69f0ae]" />
+                            {agent.description}
+                          </p>
                         </div>
-                        <p className="text-xs text-zinc-500">{agent.type}</p>
-                        <p className="text-xs text-zinc-500 mt-1">
-                          {agent.description}
-                        </p>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {division.agentCount > division.agents.length && (
-                      <div className="p-3 rounded-lg border border-dashed border-zinc-700 flex items-center justify-center">
-                        <span className="text-xs text-zinc-500">
-                          +{division.agentCount - division.agents.length} more
-                          agents
+                      <div
+                        className="p-3.5 rounded-lg flex items-center justify-center"
+                        style={{
+                          border: `1px dashed ${division.color}20`,
+                          background: `${division.color}05`,
+                        }}
+                      >
+                        <span className="text-[11px] font-mono" style={{ color: `${division.color}80` }}>
+                          +{division.agentCount - division.agents.length} more agents
                         </span>
                       </div>
                     )}

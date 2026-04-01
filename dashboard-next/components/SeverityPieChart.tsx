@@ -9,11 +9,11 @@ interface SeverityData {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  Critical: "#ef4444",
-  High: "#f97316",
-  Medium: "#f59e0b",
-  Low: "#3b82f6",
-  Info: "#6b7280",
+  Critical: "#ff1744",
+  High: "#ff9100",
+  Medium: "#ffea00",
+  Low: "#00e5ff",
+  Info: "#69f0ae",
 };
 
 interface Props {
@@ -33,27 +33,47 @@ export default function SeverityPieChart({ data = defaultData }: Props) {
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
+          <defs>
+            {data.map((entry, index) => (
+              <filter key={`glow-${index}`} id={`glow-${index}`}>
+                <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            ))}
+          </defs>
           <Pie
             data={data}
             cx="50%"
             cy="50%"
             innerRadius={55}
             outerRadius={90}
-            paddingAngle={3}
+            paddingAngle={4}
             dataKey="value"
             stroke="none"
+            animationBegin={0}
+            animationDuration={1200}
           >
             {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
+              <Cell
+                key={`cell-${index}`}
+                fill={entry.color}
+                style={{ filter: `drop-shadow(0 0 6px ${entry.color}40)` }}
+              />
             ))}
           </Pie>
           <Tooltip
             contentStyle={{
-              backgroundColor: "#27272a",
-              border: "1px solid #3f3f46",
+              backgroundColor: "rgba(12, 12, 24, 0.95)",
+              border: "1px solid rgba(99, 102, 241, 0.2)",
               borderRadius: "8px",
-              color: "#f4f4f5",
-              fontSize: "13px",
+              color: "#e4e4e7",
+              fontSize: "12px",
+              fontFamily: "monospace",
+              backdropFilter: "blur(10px)",
+              boxShadow: "0 0 20px rgba(0, 0, 0, 0.5)",
             }}
           />
         </PieChart>
@@ -62,10 +82,13 @@ export default function SeverityPieChart({ data = defaultData }: Props) {
         {data.map((entry) => (
           <div key={entry.name} className="flex items-center gap-1.5">
             <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: entry.color }}
+              className="h-2 w-2 rounded-full"
+              style={{
+                backgroundColor: entry.color,
+                boxShadow: `0 0 6px ${entry.color}60`,
+              }}
             />
-            <span className="text-xs text-zinc-400">
+            <span className="text-[11px] text-zinc-500 font-mono">
               {entry.name} ({entry.value})
             </span>
           </div>

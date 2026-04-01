@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Crosshair, Globe, Shield, Zap, Sliders } from "lucide-react";
+import { Crosshair, Globe, Shield, Zap, Sliders, Check } from "lucide-react";
 import { DIVISIONS, STEALTH_PRESETS } from "@/lib/api";
 
 export default function ScanLauncherPage() {
@@ -81,32 +81,37 @@ export default function ScanLauncherPage() {
       label: "Reconnaissance",
       desc: "Passive information gathering",
       icon: Globe,
-      color: "text-blue-400 border-blue-500/30 bg-blue-500/10",
-      active: "border-blue-500 bg-blue-500/20",
+      color: "#00e5ff",
+      activeBorder: "rgba(0, 229, 255, 0.5)",
+      activeBg: "rgba(0, 229, 255, 0.08)",
     },
     {
       value: "audit" as const,
       label: "Security Audit",
       desc: "Active vulnerability scanning",
       icon: Shield,
-      color: "text-yellow-400 border-yellow-500/30 bg-yellow-500/10",
-      active: "border-yellow-500 bg-yellow-500/20",
+      color: "#ffea00",
+      activeBorder: "rgba(255, 234, 0, 0.5)",
+      activeBg: "rgba(255, 234, 0, 0.08)",
     },
     {
       value: "redteam" as const,
       label: "Red Team",
       desc: "Full adversary simulation",
       icon: Zap,
-      color: "text-red-400 border-red-500/30 bg-red-500/10",
-      active: "border-red-500 bg-red-500/20",
+      color: "#ff1744",
+      activeBorder: "rgba(255, 23, 68, 0.5)",
+      activeBg: "rgba(255, 23, 68, 0.08)",
     },
   ];
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-zinc-100">Launch Scan</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-2xl font-bold text-white tracking-tight">
+          Launch Scan
+        </h1>
+        <p className="text-sm text-zinc-600 mt-1 font-mono">
           Configure and deploy a security assessment
         </p>
       </div>
@@ -117,8 +122,8 @@ export default function ScanLauncherPage() {
           <label htmlFor="target" className="label">
             Target URL
           </label>
-          <div className="relative">
-            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+          <div className="relative group">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-600 group-focus-within:text-neon-cyan transition-colors duration-300" />
             <input
               id="target"
               type="url"
@@ -135,30 +140,45 @@ export default function ScanLauncherPage() {
         <div className="card">
           <p className="label">Scan Mode</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {modes.map((m) => (
-              <button
-                key={m.value}
-                type="button"
-                onClick={() => setMode(m.value)}
-                className={`flex flex-col items-center gap-2 p-4 rounded-lg border transition-all ${
-                  mode === m.value
-                    ? m.active
-                    : "border-zinc-700 bg-zinc-800/50 hover:border-zinc-600"
-                }`}
-              >
-                <m.icon
-                  className={`h-6 w-6 ${mode === m.value ? m.color.split(" ")[0] : "text-zinc-500"}`}
-                />
-                <span
-                  className={`text-sm font-medium ${mode === m.value ? "text-zinc-100" : "text-zinc-400"}`}
+            {modes.map((m) => {
+              const isActive = mode === m.value;
+              return (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setMode(m.value)}
+                  className="flex flex-col items-center gap-2.5 p-5 rounded-lg transition-all duration-300 relative overflow-hidden"
+                  style={{
+                    background: isActive ? m.activeBg : "rgba(255,255,255,0.02)",
+                    border: `1px solid ${isActive ? m.activeBorder : "rgba(255,255,255,0.06)"}`,
+                    boxShadow: isActive ? `0 0 20px ${m.color}15` : "none",
+                  }}
                 >
-                  {m.label}
-                </span>
-                <span className="text-xs text-zinc-500 text-center">
-                  {m.desc}
-                </span>
-              </button>
-            ))}
+                  {isActive && (
+                    <div
+                      className="absolute top-0 left-0 right-0 h-px"
+                      style={{ background: `linear-gradient(90deg, transparent, ${m.color}, transparent)` }}
+                    />
+                  )}
+                  <m.icon
+                    className="h-6 w-6 transition-all duration-300"
+                    style={{
+                      color: isActive ? m.color : "#52525b",
+                      filter: isActive ? `drop-shadow(0 0 8px ${m.color}50)` : "none",
+                    }}
+                  />
+                  <span
+                    className="text-sm font-medium transition-colors duration-300"
+                    style={{ color: isActive ? "#ffffff" : "#71717a" }}
+                  >
+                    {m.label}
+                  </span>
+                  <span className="text-[11px] text-zinc-600 text-center font-mono">
+                    {m.desc}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -187,7 +207,7 @@ export default function ScanLauncherPage() {
 
           <div className="card">
             <label htmlFor="maxRequests" className="label">
-              Max Requests: {maxRequests.toLocaleString()}
+              Max Requests: <span className="text-neon-cyan">{maxRequests.toLocaleString()}</span>
             </label>
             <input
               id="maxRequests"
@@ -197,9 +217,12 @@ export default function ScanLauncherPage() {
               step={100}
               value={maxRequests}
               onChange={(e) => setMaxRequests(Number(e.target.value))}
-              className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-accent mt-2"
+              className="w-full h-1.5 rounded-lg appearance-none cursor-pointer mt-3"
+              style={{
+                background: `linear-gradient(to right, #6366f1 ${((maxRequests - 100) / 9900) * 100}%, rgba(255,255,255,0.05) ${((maxRequests - 100) / 9900) * 100}%)`,
+              }}
             />
-            <div className="flex justify-between text-xs text-zinc-500 mt-1">
+            <div className="flex justify-between text-[10px] text-zinc-700 mt-2 font-mono">
               <span>100</span>
               <span>10,000</span>
             </div>
@@ -208,76 +231,79 @@ export default function ScanLauncherPage() {
 
         {/* Divisions */}
         <div className="card">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-4">
             <p className="label mb-0">
-              Divisions ({selectedDivisions.length} / {DIVISIONS.length})
+              Divisions <span className="text-neon-cyan">{selectedDivisions.length}</span>
+              <span className="text-zinc-700"> / {DIVISIONS.length}</span>
             </p>
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button
                 type="button"
                 onClick={selectAllDivisions}
-                className="text-xs text-accent hover:text-accent-hover"
+                className="text-[11px] text-accent hover:text-accent-hover font-mono transition-colors"
               >
                 Select all
               </button>
-              <span className="text-zinc-600">|</span>
+              <span className="text-zinc-800">|</span>
               <button
                 type="button"
                 onClick={clearAllDivisions}
-                className="text-xs text-zinc-500 hover:text-zinc-300"
+                className="text-[11px] text-zinc-600 hover:text-zinc-400 font-mono transition-colors"
               >
                 Clear
               </button>
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-            {DIVISIONS.map((division) => (
-              <label
-                key={division}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all text-sm ${
-                  selectedDivisions.includes(division)
-                    ? "border-accent/50 bg-accent/10 text-zinc-200"
-                    : "border-zinc-700 bg-zinc-800/30 text-zinc-500 hover:border-zinc-600"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedDivisions.includes(division)}
-                  onChange={() => toggleDivision(division)}
-                  className="sr-only"
-                />
-                <span
-                  className={`h-3 w-3 rounded border flex items-center justify-center flex-shrink-0 ${
-                    selectedDivisions.includes(division)
-                      ? "bg-accent border-accent"
-                      : "border-zinc-600"
-                  }`}
+            {DIVISIONS.map((division) => {
+              const isSelected = selectedDivisions.includes(division);
+              return (
+                <label
+                  key={division}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 text-sm"
+                  style={{
+                    background: isSelected ? "rgba(99, 102, 241, 0.08)" : "rgba(255,255,255,0.01)",
+                    border: `1px solid ${isSelected ? "rgba(99, 102, 241, 0.3)" : "rgba(255,255,255,0.05)"}`,
+                  }}
                 >
-                  {selectedDivisions.includes(division) && (
-                    <svg
-                      className="h-2 w-2 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={3}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                  )}
-                </span>
-                <span className="truncate">{division}</span>
-              </label>
-            ))}
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleDivision(division)}
+                    className="sr-only"
+                  />
+                  <span
+                    className="h-3.5 w-3.5 rounded flex items-center justify-center flex-shrink-0 transition-all duration-200"
+                    style={{
+                      background: isSelected ? "#6366f1" : "transparent",
+                      border: `1.5px solid ${isSelected ? "#6366f1" : "rgba(255,255,255,0.1)"}`,
+                      boxShadow: isSelected ? "0 0 8px rgba(99, 102, 241, 0.4)" : "none",
+                    }}
+                  >
+                    {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                  </span>
+                  <span
+                    className="truncate font-mono text-xs transition-colors duration-200"
+                    style={{ color: isSelected ? "#e4e4e7" : "#52525b" }}
+                  >
+                    {division}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
+          <div
+            className="rounded-lg px-4 py-3 text-sm font-mono"
+            style={{
+              background: "rgba(255, 23, 68, 0.08)",
+              border: "1px solid rgba(255, 23, 68, 0.2)",
+              color: "#ff1744",
+            }}
+          >
             {error}
           </div>
         )}
@@ -286,17 +312,23 @@ export default function ScanLauncherPage() {
         <button
           type="submit"
           disabled={isLoading}
-          className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-base disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-2.5 py-3.5 text-base font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 text-white relative overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6, #6366f1)",
+            backgroundSize: "200% 200%",
+            animation: "gradient-shift 3s ease infinite",
+            boxShadow: isLoading ? "none" : "0 0 25px rgba(99, 102, 241, 0.3), 0 0 50px rgba(99, 102, 241, 0.1)",
+          }}
         >
           {isLoading ? (
             <>
               <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Starting Scan...
+              <span className="font-mono">Initializing Scan...</span>
             </>
           ) : (
             <>
               <Crosshair className="h-5 w-5" />
-              Start Scan
+              <span>Start Scan</span>
             </>
           )}
         </button>
