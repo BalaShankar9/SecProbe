@@ -67,7 +67,7 @@ export default function ScanLauncherPage() {
       }
 
       const data = await res.json();
-      router.push(`/scan/${data.id || "latest"}`);
+      router.push(`/scan/${data.scan_id || data.id || "latest"}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start scan");
     } finally {

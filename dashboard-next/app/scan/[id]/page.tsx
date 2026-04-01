@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -276,7 +276,55 @@ function FindingCard({
 export default function ScanResultsPage() {
   const params = useParams();
   const scanId = params.id as string;
-  const scan = { ...demoScan, id: scanId };
+  const [scan, setScan] = useState({ ...demoScan, id: scanId });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchScan() {
+      try {
+        const API = process.env.NEXT_PUBLIC_API_URL || "https://feisty-reflection-production.up.railway.app";
+        const res = await fetch(`${API}/scans/${scanId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const findings = (data.findings || []).map((f: Record<string, string>, i: number) => ({
+            id: `f-${i}`,
+            title: f.title || "Unknown",
+            severity: (f.severity || "info").toLowerCase(),
+            description: f.description || "",
+            evidence: f.evidence || "",
+            recommendation: f.recommendation || "",
+            cwe: f.cwe || "",
+            agent: f.agent || "",
+            division: f.division || "",
+          }));
+          const summary = {
+            total_findings: findings.length,
+            critical: findings.filter((f: Finding) => f.severity === "critical").length,
+            high: findings.filter((f: Finding) => f.severity === "high").length,
+            medium: findings.filter((f: Finding) => f.severity === "medium").length,
+            low: findings.filter((f: Finding) => f.severity === "low").length,
+            info: findings.filter((f: Finding) => f.severity === "info").length,
+            duration_seconds: data.duration || 0,
+          };
+          setScan({
+            id: data.scan_id || scanId,
+            target: data.target || "unknown",
+            status: data.status || "complete",
+            mode: data.mode || "audit",
+            started_at: data.created_at || new Date().toISOString(),
+            completed_at: data.completed_at || new Date().toISOString(),
+            findings,
+            summary,
+          });
+        }
+      } catch {
+        // Keep demo data as fallback
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchScan();
+  }, [scanId]);
 
   const [expandedFindings, setExpandedFindings] = useState<Set<string>>(
     new Set()
