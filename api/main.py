@@ -14,9 +14,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
+import asyncio
+
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -370,8 +372,203 @@ async def get_division_agents(division_id: int):
 # Scan Management Endpoints
 # ═════════════════════════════════════════════════════════════════════════════
 
+async def _run_scan_background(scan_id: str, target: str, mode: str):
+    """Background task that actually runs security checks against the target."""
+    record = scans_db.get(scan_id)
+    if not record:
+        return
+    record["status"] = "running"
+    record["progress"] = 0.05
+    findings: list[dict] = []
+    checks_done = 0
+    total_checks = 20
+
+    async def add_finding(title: str, severity: str, description: str = "",
+                          evidence: str = "", cwe: str = "", recommendation: str = ""):
+        nonlocal checks_done
+        findings.append({
+            "id": f"f-{len(findings)}",
+            "title": title, "severity": severity,
+            "description": description, "evidence": evidence,
+            "cwe": cwe, "recommendation": recommendation,
+        })
+        record["findings"] = findings
+        record["finding_count"] = len(findings)
+
+    async def progress(n: int):
+        nonlocal checks_done
+        checks_done = n
+        record["progress"] = round(min(checks_done / total_checks, 0.99), 2)
+
+    try:
+        async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True) as client:
+            # Check 1: Fetch target
+            await progress(1)
+            try:
+                resp = await client.get(target)
+                if resp.status_code == 200:
+                    body = resp.text.lower()
+                    # Check security headers
+                    await progress(2)
+                    missing = []
+                    for h in ["strict-transport-security", "content-security-policy",
+                              "x-content-type-options", "x-frame-options", "referrer-policy"]:
+                        if h not in resp.headers:
+                            missing.append(h)
+                    if missing:
+                        await add_finding(
+                            f"Missing Security Headers: {', '.join(missing[:3])}{'...' if len(missing) > 3 else ''}",
+                            "medium" if len(missing) > 2 else "low",
+                            f"Target is missing {len(missing)} security headers.",
+                            f"Missing: {', '.join(missing)}",
+                            "CWE-693",
+                            "Add security headers to all HTTP responses.",
+                        )
+
+                    # Check 2: Server header disclosure
+                    await progress(3)
+                    server = resp.headers.get("server", "")
+                    if server and any(v in server.lower() for v in ["apache", "nginx", "iis", "express"]):
+                        await add_finding(
+                            f"Server Version Disclosed: {server}",
+                            "low",
+                            f"Server header reveals technology: {server}",
+                            f"Server: {server}",
+                            "CWE-200",
+                            "Remove or obfuscate the Server header.",
+                        )
+
+                    # Check 3: CORS
+                    await progress(4)
+                    try:
+                        cors_resp = await client.options(target, headers={"Origin": "https://evil.com"})
+                        acao = cors_resp.headers.get("access-control-allow-origin", "")
+                        if acao == "*" or acao == "https://evil.com":
+                            await add_finding(
+                                f"CORS Misconfiguration: {acao}",
+                                "high" if acao == "https://evil.com" else "medium",
+                                "CORS allows requests from arbitrary origins.",
+                                f"Access-Control-Allow-Origin: {acao}",
+                                "CWE-942",
+                                "Restrict CORS to trusted origins only.",
+                            )
+                    except Exception:
+                        pass
+
+                    # Check 4: Common sensitive paths
+                    await progress(5)
+                    sensitive_paths = [
+                        ("/.env", "Environment File Exposed", "critical"),
+                        ("/.git/config", "Git Repository Exposed", "critical"),
+                        ("/robots.txt", "Robots.txt Accessible", "info"),
+                        ("/sitemap.xml", "Sitemap Accessible", "info"),
+                        ("/api-docs", "API Documentation Exposed", "low"),
+                        ("/swagger.json", "Swagger Schema Exposed", "low"),
+                        ("/.well-known/security.txt", "Security.txt Found", "info"),
+                        ("/admin", "Admin Panel Accessible", "high"),
+                        ("/wp-login.php", "WordPress Login Found", "medium"),
+                        ("/phpmyadmin", "phpMyAdmin Exposed", "critical"),
+                    ]
+                    for i, (path, title, sev) in enumerate(sensitive_paths):
+                        await progress(6 + i)
+                        try:
+                            r = await client.get(f"{target.rstrip('/')}{path}")
+                            if r.status_code == 200 and len(r.text) > 10:
+                                if path in ("/.env", "/.git/config", "/phpmyadmin"):
+                                    await add_finding(title, sev,
+                                        f"{path} is publicly accessible and contains sensitive data.",
+                                        f"GET {path} returned {r.status_code} ({len(r.text)} bytes)",
+                                        "CWE-200", f"Block access to {path} in your web server config.")
+                                elif path == "/admin":
+                                    await add_finding(title, sev,
+                                        "Admin panel is accessible without authentication.",
+                                        f"GET {path} returned {r.status_code}",
+                                        "CWE-284", "Restrict admin panel access with authentication.")
+                                elif path in ("/api-docs", "/swagger.json"):
+                                    await add_finding(title, sev,
+                                        "API documentation is publicly accessible.",
+                                        f"GET {path} returned {r.status_code}",
+                                        "CWE-200", "Restrict API docs to authenticated users.")
+                                elif path == "/robots.txt" and "disallow" in r.text.lower():
+                                    await add_finding("Robots.txt Reveals Hidden Paths", "low",
+                                        "robots.txt contains Disallow entries revealing hidden paths.",
+                                        r.text[:300], "CWE-200", "Don't rely on robots.txt for security.")
+                        except Exception:
+                            pass
+
+                    # Check 5: SSL/TLS
+                    await progress(17)
+                    if target.startswith("http://"):
+                        await add_finding(
+                            "No HTTPS — Traffic Not Encrypted",
+                            "high",
+                            "Target uses HTTP instead of HTTPS. All traffic is unencrypted.",
+                            f"Target URL: {target}",
+                            "CWE-319",
+                            "Enable HTTPS with a valid TLS certificate.",
+                        )
+
+                    # Check 6: Cookie flags
+                    await progress(18)
+                    for cookie_name, cookie_val in resp.headers.items():
+                        if cookie_name.lower() == "set-cookie":
+                            issues = []
+                            if "httponly" not in cookie_val.lower():
+                                issues.append("HttpOnly")
+                            if "secure" not in cookie_val.lower():
+                                issues.append("Secure")
+                            if "samesite" not in cookie_val.lower():
+                                issues.append("SameSite")
+                            if issues:
+                                await add_finding(
+                                    f"Cookie Missing Flags: {', '.join(issues)}",
+                                    "medium",
+                                    f"Cookie is missing security flags: {', '.join(issues)}",
+                                    cookie_val[:200],
+                                    "CWE-614",
+                                    "Add HttpOnly, Secure, and SameSite flags to all cookies.",
+                                )
+                                break
+
+                    # Check 7: Technology detection
+                    await progress(19)
+                    techs = []
+                    if "x-powered-by" in resp.headers:
+                        techs.append(resp.headers["x-powered-by"])
+                    if "wp-content" in body:
+                        techs.append("WordPress")
+                    if "next" in resp.headers.get("x-powered-by", "").lower():
+                        techs.append("Next.js")
+                    if techs:
+                        await add_finding(
+                            f"Technology Detected: {', '.join(techs)}",
+                            "info",
+                            f"Server exposes technology information: {', '.join(techs)}",
+                            f"Detected: {', '.join(techs)}",
+                            "CWE-200",
+                            "Remove technology disclosure headers.",
+                        )
+
+            except httpx.ConnectError:
+                await add_finding("Target Unreachable", "info",
+                    f"Could not connect to {target}", "", "", "Verify the target URL is correct.")
+            except Exception as exc:
+                await add_finding("Scan Error", "info",
+                    f"Error during scan: {str(exc)[:200]}", "", "", "")
+
+        await progress(20)
+        record["status"] = "complete"
+        record["progress"] = 1.0
+        record["findings"] = findings
+        record["finding_count"] = len(findings)
+        record["completed_at"] = datetime.now(timezone.utc).isoformat()
+    except Exception:
+        record["status"] = "failed"
+        record["progress"] = 1.0
+
+
 @app.post("/scans", tags=["Scans"], response_model=ScanResponse, status_code=201)
-async def create_scan(scan: ScanRequest):
+async def create_scan(scan: ScanRequest, background_tasks: BackgroundTasks):
     """Submit a new security scan. Returns scan ID for polling."""
     if not registry:
         raise HTTPException(status_code=503, detail="Registry not loaded")
@@ -398,6 +595,9 @@ async def create_scan(scan: ScanRequest):
     }
 
     scans_db[scan_id] = scan_record
+
+    # Launch actual scan in background
+    background_tasks.add_task(_run_scan_background, scan_id, scan.target, scan.mode.value)
 
     # Persist to Supabase if connected
     try:
@@ -464,13 +664,15 @@ async def get_scan(scan_id: str):
         "target": scan["target"],
         "mode": scan["mode"],
         "status": scan["status"],
-        "scope_domains": scan["scope_domains"],
-        "output_formats": scan["output_formats"],
-        "agent_count": scan["agent_count"],
-        "finding_count": len(scan["findings"]),
-        "progress": scan["progress"],
-        "created_at": scan["created_at"],
-        "updated_at": scan["updated_at"],
+        "scope_domains": scan.get("scope_domains", []),
+        "output_formats": scan.get("output_formats", []),
+        "agent_count": scan.get("agent_count", 0),
+        "finding_count": len(scan.get("findings", [])),
+        "findings": scan.get("findings", []),
+        "progress": scan.get("progress", 0),
+        "created_at": scan.get("created_at", ""),
+        "updated_at": scan.get("updated_at", ""),
+        "completed_at": scan.get("completed_at", ""),
     }
 
 

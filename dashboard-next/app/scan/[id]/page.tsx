@@ -280,6 +280,8 @@ export default function ScanResultsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let pollId: ReturnType<typeof setInterval> | undefined;
+
     async function fetchScan() {
       try {
         const API = process.env.NEXT_PUBLIC_API_URL || "https://feisty-reflection-production.up.railway.app";
@@ -316,14 +318,24 @@ export default function ScanResultsPage() {
             findings,
             summary,
           });
+          // If scan is still running, keep polling every 2s
+          if (data.status === "running" || data.status === "queued") {
+            if (!pollId) {
+              pollId = setInterval(fetchScan, 2000);
+            }
+          } else if (pollId) {
+            clearInterval(pollId);
+            pollId = undefined;
+          }
         }
-      } catch {
+      } catch (_err) {
         // Keep demo data as fallback
       } finally {
         setLoading(false);
       }
     }
     fetchScan();
+    return () => { if (pollId) clearInterval(pollId); };
   }, [scanId]);
 
   const [expandedFindings, setExpandedFindings] = useState<Set<string>>(
