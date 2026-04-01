@@ -56,6 +56,16 @@ class ScanRequest(BaseModel):
     )
 
 
+class CertificationOut(BaseModel):
+    cert_id: str
+    level: str
+    grade: str
+    risk_score: float
+    attestation_hash: str
+    issued_at: str
+    expires_at: str
+
+
 class ScanResponse(BaseModel):
     scan_id: str
     status: str
@@ -476,6 +486,79 @@ async def get_scan_findings(
     if severity:
         findings = [f for f in findings if f.get("severity", "").lower() == severity.lower()]
     return findings
+
+
+@app.get("/scans/{scan_id}/certification", tags=["Scans"], response_model=CertificationOut)
+async def get_scan_certification(scan_id: str):
+    """Evaluate scan findings and issue a security certification."""
+    if scan_id not in scans_db:
+        raise HTTPException(status_code=404, detail=f"Scan '{scan_id}' not found")
+
+    scan = scans_db[scan_id]
+    findings = scan.get("findings", [])
+
+    from secprobe.certification.engine import CertificationEngine
+
+    cert_engine = CertificationEngine()
+
+    # Build lightweight finding objects for the engine
+    class _Finding:
+        def __init__(self, severity: str):
+            self.severity = severity
+
+    finding_objs = [_Finding(f.get("severity", "INFO")) for f in findings]
+
+    # Compute risk score
+    sev_weights = {"CRITICAL": 25, "HIGH": 15, "MEDIUM": 8, "LOW": 3, "INFO": 0}
+    penalty = min(100, sum(sev_weights.get(fo.severity.upper(), 0) for fo in finding_objs))
+    risk_score = max(0, 100 - penalty)
+    if risk_score >= 90:
+        grade = "A"
+    elif risk_score >= 75:
+        grade = "B"
+    elif risk_score >= 60:
+        grade = "C"
+    elif risk_score >= 40:
+        grade = "D"
+    else:
+        grade = "F"
+
+    cert_level = cert_engine.evaluate(
+        findings=finding_objs,
+        risk_score=risk_score,
+        grade=grade,
+        mode=scan.get("mode", "audit"),
+    )
+
+    if cert_level is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Target does not qualify for any certification level",
+        )
+
+    severity_counts = {}
+    for fo in finding_objs:
+        sev = fo.severity.upper()
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+    cert = cert_engine.issue_certification(
+        target=scan["target"],
+        level=cert_level,
+        scan_id=scan_id,
+        findings_summary=severity_counts,
+        risk_score=risk_score,
+        grade=grade,
+    )
+
+    return CertificationOut(
+        cert_id=cert.cert_id,
+        level=cert.level.value,
+        grade=cert.grade,
+        risk_score=cert.risk_score,
+        attestation_hash=cert.attestation_hash,
+        issued_at=cert.issued_at.isoformat(),
+        expires_at=cert.expires_at.isoformat(),
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════════════

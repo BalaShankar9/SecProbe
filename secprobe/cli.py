@@ -241,6 +241,8 @@ EXAMPLES:
                     help="Maximum total requests (0=unlimited)")
     v8.add_argument("--max-duration", type=float, default=0.0,
                     help="Maximum scan duration in seconds (0=unlimited)")
+    v8.add_argument("--certify", action="store_true",
+                    help="Issue a security certification grade after scan completes")
 
     # ── v8.0 Swarm mode ─────────────────────────────────────────
     swarm = parser.add_argument_group("Swarm mode (v8.0)")
@@ -635,6 +637,57 @@ def _run_swarm(args):
         count = severity_counts.get(sev, 0)
         if count > 0:
             print_status(f"  {sev}: {count}", "info")
+
+    # ── Security Certification (swarm) ──────────────────────────
+    if getattr(args, 'certify', False):
+        try:
+            from secprobe.certification.engine import CertificationEngine
+
+            print_section("Security Certification")
+            cert_engine = CertificationEngine()
+
+            # Compute risk score from findings
+            _sev_weights = {"CRITICAL": 25, "HIGH": 15, "MEDIUM": 8, "LOW": 3, "INFO": 0}
+            _risk_score = min(100, sum(
+                _sev_weights.get(str(getattr(f, 'severity', 'INFO')), 0) for f in unique_findings
+            ))
+            _risk_score = max(0, 100 - _risk_score)
+            if _risk_score >= 90:
+                _grade = "A"
+            elif _risk_score >= 75:
+                _grade = "B"
+            elif _risk_score >= 60:
+                _grade = "C"
+            elif _risk_score >= 40:
+                _grade = "D"
+            else:
+                _grade = "F"
+
+            cert_level = cert_engine.evaluate(
+                findings=unique_findings,
+                risk_score=_risk_score,
+                grade=_grade,
+                mode=mode,
+            )
+
+            if cert_level is not None:
+                cert = cert_engine.issue_certification(
+                    target=target,
+                    level=cert_level,
+                    findings_summary=severity_counts,
+                    risk_score=_risk_score,
+                    grade=_grade,
+                )
+                print_status(f"Certification Level: {cert_level.value.upper()}", "success")
+                print_status(f"Grade: {cert.grade}", "info")
+                print_status(f"Risk Score: {cert.risk_score}/100", "info")
+                print_status(f"Attestation Hash: {cert.attestation_hash}", "info")
+                print_status(f"Cert ID: {cert.cert_id}", "info")
+                print_status(f"Expires: {cert.expires_at:%Y-%m-%d}", "info")
+            else:
+                print_status("Target does not qualify for any certification level", "warning")
+        except Exception as e:
+            print_status(f"Certification error: {e}", "warning")
 
     # ── Generate reports ─────────────────────────────────────────
     if args.output != "console" or getattr(args, 'file', None):
@@ -1199,6 +1252,59 @@ def main():
     if compliance_data:
         for fw, rpt in compliance_data.items():
             print_status(f"{fw} compliance: {rpt.compliance_score:.0f}%", "info")
+
+    # ── Security Certification ──────────────────────────────────────
+    if getattr(args, 'certify', False):
+        try:
+            from secprobe.certification.engine import CertificationEngine
+
+            print_section("Security Certification")
+            cert_engine = CertificationEngine()
+
+            # Determine risk_score and grade — use ScanSession values if available
+            if scan_session is not None:
+                _risk_score, _grade = scan_session.risk_score()
+            else:
+                # Compute a simple risk score from findings
+                _sev_weights = {"CRITICAL": 25, "HIGH": 15, "MEDIUM": 8, "LOW": 3, "INFO": 0}
+                _risk_score = min(100, sum(_sev_weights.get(f.severity, 0) for f in all_findings))
+                _risk_score = max(0, 100 - _risk_score)
+                if _risk_score >= 90:
+                    _grade = "A"
+                elif _risk_score >= 75:
+                    _grade = "B"
+                elif _risk_score >= 60:
+                    _grade = "C"
+                elif _risk_score >= 40:
+                    _grade = "D"
+                else:
+                    _grade = "F"
+
+            cert_level = cert_engine.evaluate(
+                findings=all_findings,
+                risk_score=_risk_score,
+                grade=_grade,
+                mode=getattr(args, 'mode', 'audit'),
+            )
+
+            if cert_level is not None:
+                cert = cert_engine.issue_certification(
+                    target=config.target,
+                    level=cert_level,
+                    findings_summary=by_sev,
+                    risk_score=_risk_score,
+                    grade=_grade,
+                )
+                print_status(f"Certification Level: {cert_level.value.upper()}", "success")
+                print_status(f"Grade: {cert.grade}", "info")
+                print_status(f"Risk Score: {cert.risk_score}/100", "info")
+                print_status(f"Attestation Hash: {cert.attestation_hash}", "info")
+                print_status(f"Cert ID: {cert.cert_id}", "info")
+                print_status(f"Expires: {cert.expires_at:%Y-%m-%d}", "info")
+            else:
+                print_status("Target does not qualify for any certification level", "warning")
+        except Exception as e:
+            print_status(f"Certification error: {e}", "warning")
 
     context.http_client.close()
 
