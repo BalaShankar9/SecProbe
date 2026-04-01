@@ -107,8 +107,18 @@ class SQLiScanner(SmartScanner):
             for u in self.context.get_injection_urls():
                 if u not in test_urls:
                     test_urls.append(u)
-        # Also include endpoints from attack surface
-        for injectable_url in self._get_injectable_urls():
+        # Also include endpoints from attack surface (filter to reachable ones)
+        injectable_urls = self._get_injectable_urls()
+        filtered_urls = []
+        for injectable_url in injectable_urls:
+            try:
+                r = self.http_client.get(injectable_url, timeout=5)
+                if r.status_code == 200:
+                    filtered_urls.append(injectable_url)
+            except Exception:
+                continue
+        injectable_urls = filtered_urls if filtered_urls else injectable_urls[:5]
+        for injectable_url in injectable_urls:
             if injectable_url not in test_urls:
                 test_urls.append(injectable_url)
 

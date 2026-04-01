@@ -72,8 +72,8 @@ class TestLFIScanner(unittest.TestCase):
         clean = _mock_response(text="normal page")  # for profiling
         vuln_resp = _mock_response(text=get_text)
         client = _mock_client()
-        # First call = baseline, next PROFILE_SAMPLES = profiling (clean), rest = vuln
-        client.get.side_effect = [baseline] + [clean] * PROFILE_SAMPLES + [vuln_resp] * 500
+        # quick-check + baseline + PROFILE_SAMPLES profiling (clean) + vuln responses
+        client.get.side_effect = [baseline] + [baseline] + [clean] * PROFILE_SAMPLES + [vuln_resp] * 500
         ctx = _make_context(client)
         scanner = LFIScanner(config, ctx)
         scanner.scan()

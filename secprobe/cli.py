@@ -218,6 +218,20 @@ EXAMPLES:
     v5.add_argument("--plugin", nargs="+", default=[],
                     help="Load external plugin files or directories")
 
+    # ── Auth-aware scanning ────────────────────────────────────────
+    auth_group = parser.add_argument_group("Auth-aware scanning")
+    auth_group.add_argument("--auth-url", default=None, metavar="URL",
+                            help="Explicit login endpoint URL (e.g. http://target:3000/rest/user/login)")
+    auth_group.add_argument("--auth-user", default=None, metavar="USER",
+                            help="Username or email for authenticated scanning")
+    auth_group.add_argument("--auth-pass", default=None, metavar="PASS",
+                            help="Password for authenticated scanning")
+    auth_group.add_argument("--auth-type", default="auto",
+                            choices=["auto", "jwt", "cookie", "basic", "api-key"],
+                            help="Auth mechanism (default: auto-detect)")
+    auth_group.add_argument("--auth-header", default=None, metavar="HEADER",
+                            help="Custom auth header name (e.g. X-API-Key)")
+
     # ── v8.0 Safety & Orchestration ──────────────────────────────
     v8 = parser.add_argument_group("Safety & orchestration (v8.0)")
     v8.add_argument("--safe-mode", default=None,
@@ -268,9 +282,13 @@ EXAMPLES:
 
 
 def _build_scan_context(config: ScanConfig, stealth: bool = False,
-                        impersonate: str = "chrome124"):
+                        impersonate: str = "chrome124",
+                        auth_url: str = None, auth_user: str = None,
+                        auth_pass: str = None, auth_type_override: str = "auto",
+                        auth_header_name: str = None):
     """Build a fully wired ScanContext from config."""
-    from secprobe.core.auth import AuthHandler, AuthConfig
+    from secprobe.core.auth import AuthHandler as LegacyAuthHandler, AuthConfig
+    from secprobe.core.auth_handler import AuthHandler as SmartAuthHandler, AuthType as SmartAuthType
     from secprobe.core.waf import WAFDetector
     from secprobe.core.context import ScanContext
 
@@ -301,10 +319,51 @@ def _build_scan_context(config: ScanConfig, stealth: bool = False,
         http_client = HTTPClient(http_config)
 
     auth_handler = None
-    if config.auth:
+
+    # ── New auth-aware scanning (--auth-user / --auth-pass) ──────
+    if auth_user and auth_pass:
+        try:
+            smart_handler = SmartAuthHandler(http_client)
+            target_url = normalize_url(config.target)
+            credentials = {"email": auth_user, "username": auth_user, "password": auth_pass}
+
+            # Map CLI string to AuthType enum
+            _type_map = {
+                "auto": None,
+                "jwt": SmartAuthType.JWT_BEARER,
+                "cookie": SmartAuthType.COOKIE_SESSION,
+                "basic": SmartAuthType.BASIC,
+                "api-key": SmartAuthType.API_KEY,
+            }
+            chosen_type = _type_map.get(auth_type_override)
+
+            auth_ctx = smart_handler.authenticate(
+                target_url, credentials,
+                auth_type=chosen_type,
+                auth_url=auth_url,
+                auth_header_name=auth_header_name,
+            )
+            # Apply auth to HTTP client
+            auth_headers = SmartAuthHandler.get_auth_headers(auth_ctx)
+            if auth_headers:
+                http_client._session.headers.update(auth_headers)
+            if auth_ctx.cookies:
+                for name, value in auth_ctx.cookies.items():
+                    http_client._session.cookies.set(name, value)
+
+            print_status(
+                f"Auth-aware scanning active: {auth_ctx.auth_type.value} "
+                f"(user: {auth_ctx.username})",
+                "success",
+            )
+        except Exception as e:
+            print_status(f"Auth-aware login failed: {e}", "warning")
+
+    # ── Legacy --auth string ─────────────────────────────────────
+    elif config.auth:
         try:
             auth_config = AuthConfig.from_string(config.auth)
-            auth_handler = AuthHandler(auth_config, http_client)
+            auth_handler = LegacyAuthHandler(auth_config, http_client)
             auth_headers = auth_handler.get_headers()
             if auth_headers:
                 http_client._session.headers.update(auth_headers)
@@ -696,8 +755,16 @@ def main():
 
     # ── Build fully-wired scan context ───────────────────────────────
     print_section("Initializing Pipeline")
-    context = _build_scan_context(config, stealth=args.stealth,
-                                  impersonate=args.impersonate)
+    context = _build_scan_context(
+        config,
+        stealth=args.stealth,
+        impersonate=args.impersonate,
+        auth_url=getattr(args, "auth_url", None),
+        auth_user=getattr(args, "auth_user", None),
+        auth_pass=getattr(args, "auth_pass", None),
+        auth_type_override=getattr(args, "auth_type", "auto"),
+        auth_header_name=getattr(args, "auth_header", None),
+    )
     if args.stealth:
         print_status("StealthClient: browser TLS impersonation active", "success")
     else:
@@ -1180,6 +1247,26 @@ def main():
             f"{summary['coverage']['pending']} pending",
             "info",
         )
+
+    # ── Learn from scan results ─────────────────────────────────
+    try:
+        from secprobe.intelligence.learning import ScanLearner
+        learner = ScanLearner()
+        tech_stack = []
+        if context.attack_surface and hasattr(context.attack_surface, 'technologies'):
+            tech_stack = list(context.attack_surface.technologies)
+        learn_stats = learner.learn_from_scan(
+            target=config.target,
+            tech_stack=tech_stack,
+            findings=all_findings,
+            scan_duration=(datetime.now() - _scan_start).total_seconds(),
+            mode="audit",
+        )
+        if learn_stats["correlations_updated"] > 0:
+            print_status(f"Learned {learn_stats['correlations_updated']} patterns from this scan", "info")
+        learner.close()
+    except Exception:
+        pass  # Learning failures should never break scans
 
     print_status("Scan complete.", "success")
 

@@ -245,12 +245,9 @@ _ID_PATTERNS = re.compile(
     r'[a-z0-9_-]{2,30}\.\w{2,5}|[A-Za-z0-9_-]{20,})$'
 )
 
-# Headers worth testing for injection
+# Headers worth testing for injection (reduced to most commonly injectable)
 INJECTABLE_HEADERS = [
-    "Referer", "User-Agent", "X-Forwarded-For", "X-Forwarded-Host",
-    "X-Original-URL", "X-Rewrite-URL", "Origin", "Accept-Language",
-    "X-Custom-IP-Authorization", "X-Client-IP", "True-Client-IP",
-    "X-Real-IP", "X-Originating-IP", "X-Remote-IP", "X-Remote-Addr",
+    "Referer", "X-Forwarded-For", "User-Agent", "Cookie", "X-Custom-Header",
 ]
 
 
