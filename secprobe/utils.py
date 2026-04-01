@@ -171,6 +171,9 @@ def is_valid_target(target: str) -> bool:
         return True
     except socket.error:
         pass
+    # Allow localhost
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        return True
     # Check hostname pattern
     pattern = re.compile(
         r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+"

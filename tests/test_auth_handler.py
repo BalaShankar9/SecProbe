@@ -139,7 +139,7 @@ class TestAutoDetectAuth(unittest.TestCase):
     def test_returns_none_when_nothing_found(self):
         client = MagicMock()
         client.post.return_value = _make_response(404)
-        client.get.return_value = _make_response(200)
+        client.get.return_value = _make_response(404)
 
         handler = self._handler(client)
         result = handler.auto_detect_auth("http://target:3000")

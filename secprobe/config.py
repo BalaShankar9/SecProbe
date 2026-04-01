@@ -43,6 +43,17 @@ class ScanConfig:
     ssl_verify: bool = False             # Verify SSL certificates
     dedup: bool = True                   # Deduplicate findings
 
+    # HTTP client settings
+    max_retries: int = 3
+    backoff_factor: float = 0.5
+    verify_ssl: bool = False
+    auth_header: Optional[dict] = None
+    cookies: dict = field(default_factory=dict)
+    extra_headers: dict = field(default_factory=dict)
+    rotate_user_agent: bool = False
+    max_requests: int = 10000
+    max_duration: int = 0
+
     # Directories
     BASE_DIR: str = field(default_factory=lambda: os.path.dirname(os.path.abspath(__file__)))
     WORDLIST_DIR: str = field(default_factory=lambda: os.path.join(
