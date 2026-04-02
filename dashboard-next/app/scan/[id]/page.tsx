@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -15,6 +15,7 @@ import {
   FileJson,
   FileText,
   FileCode,
+  Terminal,
 } from "lucide-react";
 import SeverityBarChart from "@/components/SeverityBarChart";
 import { severityBadgeClass, severityColor } from "@/lib/api";
@@ -24,7 +25,7 @@ import type { Finding } from "@/lib/api";
 const demoScan = {
   id: "scan-001",
   target: "https://app.example.com",
-  status: "complete" as const,
+  status: "complete" as string,
   mode: "audit",
   started_at: "2026-03-31T10:00:00Z",
   completed_at: "2026-03-31T10:42:00Z",
@@ -278,9 +279,20 @@ export default function ScanResultsPage() {
   const scanId = params.id as string;
   const [scan, setScan] = useState({ ...demoScan, id: scanId });
   const [loading, setLoading] = useState(true);
+  const [termLogs, setTermLogs] = useState<string[]>([]);
+  const termRef = useRef<HTMLDivElement>(null);
+  const prevFindingCount = useRef(0);
+
+  function addLog(line: string) {
+    const ts = new Date().toLocaleTimeString("en-US", { hour12: false });
+    setTermLogs((prev) => [...prev, `[${ts}] ${line}`]);
+  }
 
   useEffect(() => {
     let pollId: ReturnType<typeof setInterval> | undefined;
+
+    addLog(`SecProbe v8.0 — Initializing scan ${scanId}`);
+    addLog(`Connecting to backend...`);
 
     async function fetchScan() {
       try {
@@ -308,6 +320,24 @@ export default function ScanResultsPage() {
             info: findings.filter((f: Finding) => f.severity === "info").length,
             duration_seconds: data.duration || 0,
           };
+          // Generate terminal logs for new findings
+          if (findings.length > prevFindingCount.current) {
+            const newFindings = findings.slice(prevFindingCount.current);
+            for (const f of newFindings) {
+              const sevColor = f.severity === "critical" ? "\x1b[31m" : f.severity === "high" ? "\x1b[33m" : "";
+              addLog(`[${f.severity.toUpperCase()}] Found: ${f.title}`);
+              if (f.cwe) addLog(`  └─ ${f.cwe} | ${f.evidence?.slice(0, 80) || ""}`);
+            }
+            prevFindingCount.current = findings.length;
+          }
+
+          if (data.status === "running") {
+            addLog(`⟳ Scanning... ${Math.round((data.progress || 0) * 100)}% | ${findings.length} findings`);
+          } else if (data.status === "complete" && prevFindingCount.current > 0) {
+            addLog(`✓ Scan complete — ${findings.length} findings discovered`);
+            addLog(`  Risk: ${summary.critical} critical, ${summary.high} high, ${summary.medium} medium, ${summary.low} low`);
+          }
+
           setScan({
             id: data.scan_id || scanId,
             target: data.target || "unknown",
@@ -337,6 +367,13 @@ export default function ScanResultsPage() {
     fetchScan();
     return () => { if (pollId) clearInterval(pollId); };
   }, [scanId]);
+
+  // Auto-scroll terminal
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.scrollTop = termRef.current.scrollHeight;
+    }
+  }, [termLogs]);
 
   const [expandedFindings, setExpandedFindings] = useState<Set<string>>(
     new Set()
@@ -459,6 +496,65 @@ export default function ScanResultsPage() {
               </span>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Live Terminal */}
+      <div className="card overflow-hidden" style={{ border: "1px solid rgba(0, 229, 255, 0.15)" }}>
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800/50" style={{ background: "rgba(0, 229, 255, 0.03)" }}>
+          <Terminal className="h-4 w-4 text-[#00e5ff]" style={{ filter: "drop-shadow(0 0 4px rgba(0, 229, 255, 0.4))" }} />
+          <span className="text-xs font-mono font-bold text-[#00e5ff] tracking-wider">SCAN OUTPUT</span>
+          <div className="ml-auto flex items-center gap-2">
+            {(scan.status === "running" || scan.status === "queued") && (
+              <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#69f0ae]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#69f0ae] animate-pulse" />
+                LIVE
+              </span>
+            )}
+            <span className="text-[10px] font-mono text-zinc-600">{termLogs.length} lines</span>
+          </div>
+        </div>
+        <div
+          ref={termRef}
+          className="p-4 font-mono text-xs leading-relaxed overflow-y-auto"
+          style={{
+            height: "200px",
+            background: "rgba(0, 0, 0, 0.4)",
+            color: "#a1a1aa",
+          }}
+        >
+          {termLogs.length === 0 ? (
+            <span className="text-zinc-700">Waiting for scan data...</span>
+          ) : (
+            termLogs.map((line, i) => (
+              <div
+                key={i}
+                className="py-0.5"
+                style={{
+                  color: line.includes("[CRITICAL]")
+                    ? "#ff1744"
+                    : line.includes("[HIGH]")
+                    ? "#ff9100"
+                    : line.includes("[MEDIUM]")
+                    ? "#ffea00"
+                    : line.includes("[LOW]")
+                    ? "#00e5ff"
+                    : line.includes("✓")
+                    ? "#69f0ae"
+                    : line.includes("⟳")
+                    ? "#6366f1"
+                    : line.includes("└─")
+                    ? "#52525b"
+                    : "#a1a1aa",
+                }}
+              >
+                {line}
+              </div>
+            ))
+          )}
+          {(scan.status === "running" || scan.status === "queued") && (
+            <div className="py-0.5 text-[#6366f1] animate-pulse">█</div>
+          )}
         </div>
       </div>
 
