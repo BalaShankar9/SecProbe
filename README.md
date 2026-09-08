@@ -1,9 +1,15 @@
+![SecProbe — Inspect findings. Trace the evidence.](.github/showcase/banner.svg)
+
+**[Project guide](docs/SHOWCASE.md)** · [Source](https://github.com/BalaShankar9/SecProbe) · [Issues](https://github.com/BalaShankar9/SecProbe/issues) · [Bala's work](https://github.com/BalaShankar9)
+
+> **Current stage:** Security toolkit · validation required. [See the evidence and next release checklist](docs/SHOWCASE.md).
+
 # 🛡️ SecProbe — Security Testing Toolkit
 
 A comprehensive, modular security testing tool built in Python for web application and network security assessments.
 
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)
-![License MIT](https://img.shields.io/badge/License-MIT-green)
+License metadata is declared in the package; a root license file should be reconciled before a public release.
 
 ---
 
@@ -37,7 +43,8 @@ SecProbe includes **10 built-in scanner modules**:
 
 ```bash
 # Clone / navigate to the project
-cd STT
+git clone https://github.com/BalaShankar9/SecProbe.git
+cd SecProbe
 
 # Install dependencies
 pip install -r requirements.txt
@@ -207,4 +214,4 @@ STT/
 
 ## 📄 License
 
-MIT License — see [LICENSE](LICENSE) for details.
+The package declares MIT license metadata in `pyproject.toml` and `setup.py`. A complete root license file still needs to be supplied before release.
